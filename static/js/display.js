@@ -5,7 +5,7 @@ const EVENT_LOCATION = {
 };
 
 const MAP_MAX_ZOOM = 20;
-const SATELLITE_NATIVE_ZOOM = 18;
+const SATELLITE_NATIVE_ZOOM = 16;
 
 const plantingZones = [
     {
