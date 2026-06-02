@@ -4,6 +4,7 @@ import json
 from datetime import datetime
 import hmac
 import secrets
+from urllib.parse import urlparse
 from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, session, flash, abort
 from flask_socketio import SocketIO, emit
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -18,7 +19,9 @@ from io import BytesIO, StringIO
 
 app = Flask(__name__)
 APP_NAME = 'RootLedger'
-PRIMARY_HOST = os.environ.get('PRIMARY_HOST', 'greenledger-osaw.onrender.com')
+RENDER_EXTERNAL_URL = os.environ.get('RENDER_EXTERNAL_URL', '')
+DEFAULT_PRIMARY_HOST = urlparse(RENDER_EXTERNAL_URL).netloc or 'rootledger-osaw.onrender.com'
+PRIMARY_HOST = os.environ.get('PRIMARY_HOST', DEFAULT_PRIMARY_HOST)
 IS_PRODUCTION = os.environ.get('RENDER') == 'true' or os.environ.get('FLASK_ENV') == 'production'
 ALLOWED_IMAGE_EXTENSIONS = {'jpg', 'jpeg', 'png', 'webp'}
 
@@ -26,7 +29,7 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY') or ('dev-secret' if not IS_PRODUCTION else secrets.token_urlsafe(64))
 app.config['UPLOAD_FOLDER'] = os.path.join('static', 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max limit
-app.config['DATABASE'] = os.path.join('instance', 'database.db')
+app.config['DATABASE'] = os.environ.get('DATABASE_PATH', os.path.join('instance', 'database.db'))
 app.config['PREFERRED_URL_SCHEME'] = 'https'
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'

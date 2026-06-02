@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: rootledger-osaw
+    runtime: python
+    plan: free
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --worker-class eventlet -w 1 app:app
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: FORCE_HTTPS
+        value: "1"
+      - key: PRIMARY_HOST
+        value: rootledger-osaw.onrender.com
+      - key: ALLOWED_ORIGINS
+        value: https://rootledger-osaw.onrender.com
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ADMIN_USERNAME
+        value: admin
+      - key: ADMIN_PASSWORD
+        sync: false
