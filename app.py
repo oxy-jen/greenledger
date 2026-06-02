@@ -9,7 +9,7 @@ from flask import Flask, render_template, request, jsonify, send_file, redirect,
 from flask_socketio import SocketIO, emit
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.utils import secure_filename
-from PIL import Image
+from PIL import Image, ExifTags
 import sqlite3
 import hashlib
 from functools import wraps
@@ -244,7 +244,9 @@ def extract_exif_gps(file):
     try:
         file.seek(0)
         img = Image.open(file)
-        gps = img.getexif().get(34853)
+        exif = img.getexif()
+        gps_ifd = getattr(ExifTags.IFD, 'GPSInfo', 34853)
+        gps = exif.get_ifd(gps_ifd) if hasattr(exif, 'get_ifd') else exif.get(34853)
         file.seek(0)
         if not gps:
             return None

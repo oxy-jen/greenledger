@@ -47,6 +47,7 @@ const displayState = {
     previewMarker: null,
     layers: {},
     activeLayer: 'street',
+    viewMode: 'street',
     densityEnabled: false,
     firstFit: true
 };
@@ -124,8 +125,9 @@ function setupMap() {
 }
 
 function setupControls() {
-    document.getElementById('streetLayerBtn')?.addEventListener('click', () => setBaseLayer('street'));
-    document.getElementById('satelliteLayerBtn')?.addEventListener('click', () => setBaseLayer('satellite'));
+    document.getElementById('streetLayerBtn')?.addEventListener('click', () => setMapView('street'));
+    document.getElementById('satelliteLayerBtn')?.addEventListener('click', () => setMapView('satellite'));
+    document.getElementById('threeDLayerBtn')?.addEventListener('click', () => setMapView('3d'));
     document.getElementById('densityToggle')?.addEventListener('click', toggleDensity);
     document.getElementById('gpsButton')?.addEventListener('click', locateVolunteer);
     document.getElementById('plantHereButton')?.addEventListener('click', plantTreeHere);
@@ -193,8 +195,27 @@ function setBaseLayer(layerName) {
     displayState.map.removeLayer(displayState.layers[displayState.activeLayer]);
     displayState.layers[layerName].addTo(displayState.map);
     displayState.activeLayer = layerName;
-    document.getElementById('streetLayerBtn')?.classList.toggle('active', layerName === 'street');
-    document.getElementById('satelliteLayerBtn')?.classList.toggle('active', layerName === 'satellite');
+}
+
+function setMapView(viewMode) {
+    const layerName = viewMode === 'street' ? 'street' : 'satellite';
+    setBaseLayer(layerName);
+    displayState.viewMode = viewMode;
+
+    const mapCard = document.querySelector('.map-forest-card');
+    mapCard?.classList.toggle('map-3d-mode', viewMode === '3d');
+
+    document.getElementById('streetLayerBtn')?.classList.toggle('active', viewMode === 'street');
+    document.getElementById('satelliteLayerBtn')?.classList.toggle('active', viewMode === 'satellite');
+    document.getElementById('threeDLayerBtn')?.classList.toggle('active', viewMode === '3d');
+    document.getElementById('streetLayerBtn')?.setAttribute('aria-pressed', String(viewMode === 'street'));
+    document.getElementById('satelliteLayerBtn')?.setAttribute('aria-pressed', String(viewMode === 'satellite'));
+    document.getElementById('threeDLayerBtn')?.setAttribute('aria-pressed', String(viewMode === '3d'));
+
+    if (viewMode === '3d') {
+        displayState.map.setZoom(Math.max(displayState.map.getZoom(), 18), { animate: true });
+    }
+    setTimeout(() => displayState.map.invalidateSize(), 120);
 }
 
 function toggleDensity() {
@@ -216,6 +237,7 @@ function renderMap() {
 
     renderHeatLayer();
     drawZones();
+    displayState.map.invalidateSize();
 
     if (displayState.firstFit && treePoints.length) {
         const bounds = L.latLngBounds(treePoints.map(tree => [tree.lat, tree.lng]));

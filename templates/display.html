@@ -64,11 +64,14 @@
                         <span>Mathenge TTI, Othaya</span>
                     </div>
                     <div class="map-display-controls" aria-label="Map controls">
-                        <button id="streetLayerBtn" class="active" type="button" title="Street map">
+                        <button id="streetLayerBtn" class="active" type="button" title="Street map" aria-pressed="true">
                             <i class="fa-solid fa-road"></i>
                         </button>
-                        <button id="satelliteLayerBtn" type="button" title="Satellite map">
+                        <button id="satelliteLayerBtn" type="button" title="Satellite map" aria-pressed="false">
                             <i class="fa-solid fa-satellite"></i>
+                        </button>
+                        <button id="threeDLayerBtn" type="button" title="3D satellite map" aria-pressed="false">
+                            <span>3D</span>
                         </button>
                         <button id="densityToggle" type="button" aria-pressed="false" title="Tree density">
                             <i class="fa-solid fa-fire-flame-simple"></i>
