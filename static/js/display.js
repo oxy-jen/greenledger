@@ -4,6 +4,9 @@ const EVENT_LOCATION = {
     lng: 36.8919167
 };
 
+const MAP_MAX_ZOOM = 20;
+const SATELLITE_NATIVE_ZOOM = 18;
+
 const plantingZones = [
     {
         name: 'Main Gate',
@@ -84,7 +87,7 @@ function setupMap() {
         center: [EVENT_LOCATION.lat, EVENT_LOCATION.lng],
         zoom: 17,
         minZoom: 14,
-        maxZoom: 20,
+        maxZoom: MAP_MAX_ZOOM,
         zoomControl: false,
         preferCanvas: true,
         attributionControl: false,
@@ -93,7 +96,8 @@ function setupMap() {
     });
 
     displayState.layers.street = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 20,
+        maxZoom: MAP_MAX_ZOOM,
+        maxNativeZoom: 19,
         updateWhenIdle: true,
         keepBuffer: 3
     }).addTo(displayState.map);
@@ -101,7 +105,8 @@ function setupMap() {
     displayState.layers.satellite = L.tileLayer(
         'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
         {
-            maxZoom: 20,
+            maxZoom: MAP_MAX_ZOOM,
+            maxNativeZoom: SATELLITE_NATIVE_ZOOM,
             updateWhenIdle: true,
             keepBuffer: 3
         }
