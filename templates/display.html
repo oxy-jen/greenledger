@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}RootLedger - Live Event Display {% endblock %}
+{% block title %}GreenLedger - Live Event Display{% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -8,100 +8,116 @@
 {% endblock %}
 
 {% block content %}
-<main class="gis-display">
-    <div id="liveMap" class="gis-map" aria-label="RootLedger live planting map"></div>
-
-    <header class="gis-topbar">
-        <div class="brand">
-            <span class="brand-mark"><i class="fa-solid fa-leaf"></i></span>
-            <span>RootLedger</span>
-        </div>
-        <div class="gis-event">
-            <strong>Mathenge TTI Mazingira Day 2026</strong>
-            <span>Live environmental intelligence dashboard</span>
-        </div>
-        <time id="liveClock" class="gis-clock">--:--:--</time>
-    </header>
-
-    <section class="gis-dashboard" aria-label="Live planting metrics">
-        <article class="gis-stat">
-            <i class="fa-solid fa-tree"></i>
-            <span>Total Trees</span>
-            <strong id="treeCounter">0</strong>
-        </article>
-        <article class="gis-stat">
-            <i class="fa-solid fa-users"></i>
-            <span>Volunteers</span>
-            <strong id="participantCounter">0</strong>
-        </article>
-        <article class="gis-stat">
-            <i class="fa-solid fa-location-dot"></i>
-            <span>Planting Zones</span>
-            <strong id="zoneCounter">0</strong>
-        </article>
-        <article class="gis-stat">
-            <i class="fa-solid fa-cloud"></i>
-            <span>Carbon Impact</span>
-            <strong id="co2Counter">0 kg</strong>
-        </article>
-    </section>
-
-    <section class="gis-controls" aria-label="Map controls">
-        <div class="segmented-control" role="group" aria-label="Map layer">
-            <button id="streetLayerBtn" class="active" type="button">
-                <i class="fa-solid fa-road"></i>
-                <span>Street</span>
-            </button>
-            <button id="satelliteLayerBtn" type="button">
-                <i class="fa-solid fa-satellite"></i>
-                <span>Satellite</span>
-            </button>
-        </div>
-        <button id="densityToggle" class="gis-toggle" type="button" aria-pressed="false">
-            <i class="fa-solid fa-fire-flame-simple"></i>
-            <span>Tree Density</span>
-        </button>
-        <button id="gpsButton" class="gis-toggle" type="button">
-            <i class="fa-solid fa-location-crosshairs"></i>
-            <span>My Location</span>
-        </button>
-        <button id="plantHereButton" class="gis-toggle primary" type="button">
-            <i class="fa-solid fa-circle-plus"></i>
-            <span>Plant Tree Here</span>
-        </button>
-    </section>
-
-    <aside class="gis-sidepanel" aria-label="Planting zones">
-        <div class="gis-panel-head">
-            <div>
-                <h1>Planting Zones</h1>
-                <p>Live completion by campus area</p>
+<main class="tv-page neon-mode">
+    <section class="tv-frame" aria-label="GreenLedger live event display">
+        <header class="tv-header">
+            <div class="brand">
+                <span class="brand-mark"><i class="fa-solid fa-seedling"></i></span>
+                <span>GreenLedger</span>
             </div>
-            <span id="weatherDisplay"><i class="fa-solid fa-cloud-sun"></i> --</span>
-        </div>
-        <div id="zoneList" class="zone-list"></div>
-    </aside>
+            <strong>Mazingira Day 2026</strong>
+            <span>Live Event Display</span>
+            <button id="themeToggle" class="theme-toggle" type="button" aria-pressed="true">
+                <i class="fa-solid fa-moon"></i>
+                <span>Green Mode</span>
+            </button>
+            <time id="liveClock" class="tv-clock">--:--:--</time>
+        </header>
 
-    <section class="gis-feed" aria-label="Live activity feed">
-        <div class="gis-panel-head">
-            <div>
-                <h2>Live Activity</h2>
-                <p>New submissions update instantly</p>
-            </div>
-            <span id="connectionState"><i class="fa-solid fa-circle"></i> Live</span>
-        </div>
-        <div id="liveFeed" class="gis-feed-list">
-            <div class="empty-state">Waiting for participant submissions.</div>
+        <div class="tv-layout">
+            <aside class="tv-left" aria-label="Live environmental totals">
+                <article class="tv-card hero-stat">
+                    <i class="fa-solid fa-tree"></i>
+                    <strong id="treeCounter">0</strong>
+                    <span>Live Trees</span>
+                </article>
+
+                <article class="tv-card impact-stat">
+                    <i class="fa-solid fa-cloud"></i>
+                    <div>
+                        <strong id="co2Counter">0 kg</strong>
+                        <span>Environmental Impact</span>
+                    </div>
+                </article>
+
+                <article class="tv-card mini-weather">
+                    <h2>Live Weather</h2>
+                    <div id="weatherDisplay"><i class="fa-solid fa-cloud-sun"></i> Mathenge TTI</div>
+                </article>
+
+                <article class="tv-card mini-participants">
+                    <h2>Live Participants</h2>
+                    <strong id="participantCounter">0</strong>
+                    <span>participant submissions</span>
+                </article>
+            </aside>
+
+            <section class="tv-center" aria-label="Map and planting moments">
+                <article class="map-forest-card">
+                    <div id="liveMap" aria-label="RootLedger live planting map"></div>
+                    <div class="map-title-chip">
+                        <i class="fa-solid fa-location-dot"></i>
+                        <span>Live Planting Map</span>
+                    </div>
+                    <div class="map-location-chip">
+                        <i class="fa-solid fa-map-pin"></i>
+                        <span>Mathenge TTI, Othaya</span>
+                    </div>
+                    <div class="map-display-controls" aria-label="Map controls">
+                        <button id="streetLayerBtn" class="active" type="button" title="Street map">
+                            <i class="fa-solid fa-road"></i>
+                        </button>
+                        <button id="satelliteLayerBtn" type="button" title="Satellite map">
+                            <i class="fa-solid fa-satellite"></i>
+                        </button>
+                        <button id="densityToggle" type="button" aria-pressed="false" title="Tree density">
+                            <i class="fa-solid fa-fire-flame-simple"></i>
+                        </button>
+                        <button id="gpsButton" type="button" title="My location">
+                            <i class="fa-solid fa-location-crosshairs"></i>
+                        </button>
+                    </div>
+                    <div class="map-legend-chip">
+                        <span><b class="legend-dot marker"></b>Tree marker</span>
+                        <span><b class="legend-dot cluster-mid"></b>Cluster</span>
+                        <span><b class="legend-dot cluster-forest"></b>Forest</span>
+                    </div>
+                </article>
+
+                <article class="tv-card moments-card">
+                    <div class="tv-card-head">
+                        <h2><i class="fa-solid fa-camera"></i> Planting Moments</h2>
+                        <span>Live</span>
+                    </div>
+                    <div id="momentsGrid" class="moments-grid">
+                        <div class="empty-state">Waiting for participant photos.</div>
+                    </div>
+                </article>
+            </section>
+
+            <aside class="tv-right" aria-label="Activity and competition">
+                <article class="tv-card feed-card">
+                    <div class="tv-card-head">
+                        <h2><i class="fa-solid fa-signal"></i> Live Activity Feed</h2>
+                        <span id="connectionState"><i class="fa-solid fa-circle"></i> Live</span>
+                    </div>
+                    <div id="liveFeed" class="tv-feed">
+                        <div class="empty-state">Waiting for participant submissions.</div>
+                    </div>
+                </article>
+
+                <article class="tv-card competition-card">
+                    <div class="tv-card-head">
+                        <h2>Department Competition</h2>
+                        <span><i class="fa-solid fa-trophy"></i></span>
+                    </div>
+                    <div id="leaderboardList" class="tv-leaderboard">
+                        <div class="empty-state">Waiting for team totals.</div>
+                    </div>
+                </article>
+            </aside>
         </div>
     </section>
-
-    <div class="gis-legend" aria-label="Map legend">
-        <span><b class="legend-dot marker"></b>Tree marker</span>
-        <span><b class="legend-dot cluster-low"></b>1-10</span>
-        <span><b class="legend-dot cluster-mid"></b>11-50</span>
-        <span><b class="legend-dot cluster-high"></b>51-100</span>
-        <span><b class="legend-dot cluster-forest"></b>100+</span>
-    </div>
 </main>
 {% endblock %}
 

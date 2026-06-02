@@ -1421,6 +1421,40 @@ button {
     margin-right: 6px;
 }
 
+.map-display-controls {
+    position: absolute;
+    z-index: 520;
+    right: 14px;
+    bottom: 14px;
+    display: grid;
+    gap: 7px;
+}
+
+.map-display-controls button {
+    width: 36px;
+    height: 36px;
+    display: grid;
+    place-items: center;
+    border-radius: 8px;
+    color: #21312a;
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid #cddfce;
+    box-shadow: 0 6px 18px rgba(19, 43, 30, 0.14);
+    cursor: pointer;
+}
+
+.map-display-controls button.active,
+.map-display-controls button[aria-pressed="true"] {
+    color: white;
+    background: #1f7a4a;
+    border-color: #1f7a4a;
+}
+
+.moments-grid .empty-state {
+    grid-column: 1 / -1;
+    align-self: center;
+}
+
 .legend-dot.moringa { background: #5f9346; }
 .legend-dot.jacaranda { background: #8a4bd6; }
 .legend-dot.acacia { background: #d78a2c; }
@@ -1732,6 +1766,21 @@ button {
 .neon-mode .map-location-chip i {
     color: #55ff69;
     filter: drop-shadow(0 0 9px rgba(85, 255, 105, 0.85));
+}
+
+.neon-mode .map-display-controls button {
+    color: #ecfff7;
+    background: rgba(3, 18, 17, 0.86);
+    border-color: rgba(0, 255, 160, 0.48);
+    box-shadow: 0 0 18px rgba(0, 255, 115, 0.18);
+}
+
+.neon-mode .map-display-controls button.active,
+.neon-mode .map-display-controls button[aria-pressed="true"] {
+    color: #031211;
+    background: #55ff69;
+    border-color: #c4ffd1;
+    box-shadow: 0 0 18px rgba(85, 255, 105, 0.62);
 }
 
 .neon-mode .forest-visual {

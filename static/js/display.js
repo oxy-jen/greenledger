@@ -53,6 +53,7 @@ const displayState = {
 
 document.addEventListener('DOMContentLoaded', () => {
     setupClock();
+    setupTheme();
     setupMap();
     setupControls();
     setupSocket();
@@ -119,6 +120,7 @@ function setupMap() {
 
     displayState.zoneLayer = L.layerGroup().addTo(displayState.map);
     drawZones();
+    setTimeout(() => displayState.map.invalidateSize(), 120);
 }
 
 function setupControls() {
@@ -127,6 +129,26 @@ function setupControls() {
     document.getElementById('densityToggle')?.addEventListener('click', toggleDensity);
     document.getElementById('gpsButton')?.addEventListener('click', locateVolunteer);
     document.getElementById('plantHereButton')?.addEventListener('click', plantTreeHere);
+}
+
+function setupTheme() {
+    const page = document.querySelector('.tv-page');
+    const toggle = document.getElementById('themeToggle');
+    if (!page || !toggle) return;
+
+    const setTheme = isGreenMode => {
+        page.classList.toggle('neon-mode', isGreenMode);
+        toggle.setAttribute('aria-pressed', String(isGreenMode));
+        toggle.innerHTML = isGreenMode
+            ? '<i class="fa-solid fa-moon"></i><span>Green Mode</span>'
+            : '<i class="fa-solid fa-sun"></i><span>Light Mode</span>';
+        if (displayState.map) {
+            setTimeout(() => displayState.map.invalidateSize(), 80);
+        }
+    };
+
+    setTheme(page.classList.contains('neon-mode'));
+    toggle.addEventListener('click', () => setTheme(!page.classList.contains('neon-mode')));
 }
 
 function setupSocket() {
@@ -294,6 +316,7 @@ function updateStats(data) {
     setText('treeCounter', formatNumber(data.trees));
     setText('participantCounter', formatNumber(data.participants));
     setText('co2Counter', `${formatNumber(Math.round(data.co2))} kg`);
+    renderLeaderboard(data.leaderboard || []);
 }
 
 function updatePanels() {
@@ -328,10 +351,12 @@ function updateFeed(records) {
     if (!feed) return;
     if (!records.length) {
         feed.innerHTML = '<div class="empty-state">Waiting for participant submissions.</div>';
+        renderMoments([]);
         return;
     }
     feed.innerHTML = '';
     records.forEach(record => addFeedItem(record, false));
+    renderMoments(records);
 }
 
 function addFeedItem(record, prepend) {
@@ -340,8 +365,16 @@ function addFeedItem(record, prepend) {
     feed.querySelector('.empty-state')?.remove();
 
     const item = document.createElement('article');
-    item.className = 'gis-feed-item';
-    item.innerHTML = `
+    item.className = feed.classList.contains('tv-feed') ? 'feed-item' : 'gis-feed-item';
+    item.innerHTML = feed.classList.contains('tv-feed') ? `
+        <img class="feed-image" src="${photoUrl(record.photo)}" alt="${escapeHtml(record.name || 'Volunteer')}">
+        <div>
+            <strong class="feed-name">${escapeHtml(record.name || 'Volunteer')}</strong>
+            <span class="feed-details">${formatNumber(record.quantity || 1)} planted ${escapeHtml(record.species || 'Tree')}</span>
+            <span class="feed-role">${escapeHtml(record.role || record.zone || 'Participant')}</span>
+        </div>
+        <img class="feed-thumb" src="${photoUrl(record.photo)}" alt="">
+    ` : `
         <img src="${photoUrl(record.photo)}" alt="${escapeHtml(record.name || 'Volunteer')}">
         <div>
             <strong>${escapeHtml(record.name || 'Volunteer')}</strong>
@@ -354,6 +387,46 @@ function addFeedItem(record, prepend) {
     while (feed.children.length > 8) {
         feed.removeChild(feed.lastElementChild);
     }
+}
+
+function renderMoments(records) {
+    const grid = document.getElementById('momentsGrid');
+    if (!grid) return;
+
+    const photos = records.filter(record => record.photo).slice(0, 12);
+    if (!photos.length) {
+        grid.innerHTML = '<div class="empty-state">Waiting for participant photos.</div>';
+        return;
+    }
+
+    grid.innerHTML = photos.map(record => `
+        <img src="${photoUrl(record.photo)}" alt="${escapeHtml(record.name || 'Planting moment')}">
+    `).join('');
+}
+
+function renderLeaderboard(rows) {
+    const list = document.getElementById('leaderboardList');
+    if (!list) return;
+
+    if (!rows.length) {
+        list.innerHTML = '<div class="empty-state">Waiting for team totals.</div>';
+        return;
+    }
+
+    const max = Math.max(...rows.map(row => Number(row.total || 0)), 1);
+    list.innerHTML = rows.slice(0, 6).map((row, index) => {
+        const width = Math.max(Math.round((Number(row.total || 0) / max) * 100), 8);
+        return `
+            <article class="leader-row">
+                <span class="leader-rank">${index + 1}</span>
+                <div>
+                    <div class="leader-name">${escapeHtml(row.role || 'Department')}</div>
+                    <div class="bar"><span style="width: ${width}%"></span></div>
+                </div>
+                <strong class="leader-count">${formatNumber(row.total)}</strong>
+            </article>
+        `;
+    }).join('');
 }
 
 function locateVolunteer() {
