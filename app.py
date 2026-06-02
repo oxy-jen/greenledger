@@ -14,7 +14,7 @@ import zipfile
 from io import BytesIO, StringIO
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'greenledger_super_secret_key_2026_mazingira'
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret')
 app.config['UPLOAD_FOLDER'] = os.path.join('static', 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max limit
 app.config['DATABASE'] = os.path.join('instance', 'database.db')
