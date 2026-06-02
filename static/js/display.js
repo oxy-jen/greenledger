@@ -1,41 +1,67 @@
-const displayState = {
-    map: null,
-    markers: new Map(),
-    milestones: [10, 25, 50, 100, 200, 500, 1000]
-};
 const EVENT_LOCATION = {
     name: 'Mathenge TTI, Othaya',
     lat: -0.5084917,
     lng: 36.8919167
 };
 
+const plantingZones = [
+    {
+        name: 'Main Gate',
+        leader: 'Security Desk',
+        target: 80,
+        points: [[-0.50696, 36.8906], [-0.50696, 36.8915], [-0.50765, 36.89155], [-0.50772, 36.89062]]
+    },
+    {
+        name: 'Administration Block',
+        leader: 'Administration',
+        target: 120,
+        points: [[-0.50772, 36.89086], [-0.50768, 36.89205], [-0.50848, 36.89208], [-0.50852, 36.8909]]
+    },
+    {
+        name: 'ICT Block',
+        leader: 'ICT Department',
+        target: 140,
+        points: [[-0.50836, 36.8901], [-0.50826, 36.89102], [-0.50908, 36.89112], [-0.50916, 36.8902]]
+    },
+    {
+        name: 'Engineering Area',
+        leader: 'Engineering Department',
+        target: 160,
+        points: [[-0.50858, 36.89205], [-0.50852, 36.89308], [-0.50936, 36.89312], [-0.50942, 36.89212]]
+    },
+    {
+        name: 'Agriculture Farm',
+        leader: 'Agriculture Department',
+        target: 220,
+        points: [[-0.50922, 36.89064], [-0.50922, 36.89208], [-0.5102, 36.89212], [-0.51026, 36.89072]]
+    }
+];
+
+const displayState = {
+    map: null,
+    records: new Map(),
+    clusterLayer: null,
+    heatLayer: null,
+    zoneLayer: null,
+    userMarker: null,
+    previewMarker: null,
+    layers: {},
+    activeLayer: 'street',
+    densityEnabled: false,
+    firstFit: true
+};
+
 document.addEventListener('DOMContentLoaded', () => {
-    setupThemeToggle();
     setupClock();
     setupMap();
+    setupControls();
     setupSocket();
     refreshDisplay();
     setupWeather();
 
-    setInterval(refreshDisplay, 5000);
+    setInterval(refreshDisplay, 6000);
     setInterval(setupWeather, 600000);
 });
-
-function setupThemeToggle() {
-    const toggle = document.getElementById('displayThemeToggle');
-    const savedTheme = localStorage.getItem('rootledger-display-theme');
-    if (savedTheme === 'neon') {
-        document.body.classList.add('neon-mode');
-    }
-    if (!toggle) return;
-    toggle.addEventListener('click', () => {
-        document.body.classList.toggle('neon-mode');
-        localStorage.setItem(
-            'rootledger-display-theme',
-            document.body.classList.contains('neon-mode') ? 'neon' : 'light'
-        );
-    });
-}
 
 function setupClock() {
     const clock = document.getElementById('liveClock');
@@ -55,246 +81,326 @@ function setupMap() {
     displayState.map = L.map('liveMap', {
         center: [EVENT_LOCATION.lat, EVENT_LOCATION.lng],
         zoom: 17,
-        minZoom: 15,
-        zoomControl: true,
-        attributionControl: false
+        minZoom: 14,
+        maxZoom: 20,
+        zoomControl: false,
+        preferCanvas: true,
+        attributionControl: false,
+        zoomSnap: 0.25,
+        wheelPxPerZoomLevel: 90
     });
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19
+    displayState.layers.street = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 20,
+        updateWhenIdle: true,
+        keepBuffer: 3
     }).addTo(displayState.map);
 
-    L.circle([EVENT_LOCATION.lat, EVENT_LOCATION.lng], {
-        radius: 220,
-        color: '#2f7d55',
-        weight: 2,
-        fillColor: '#6fb35a',
-        fillOpacity: 0.16
+    displayState.layers.satellite = L.tileLayer(
+        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        {
+            maxZoom: 20,
+            updateWhenIdle: true,
+            keepBuffer: 3
+        }
+    );
+
+    L.control.zoom({ position: 'bottomright' }).addTo(displayState.map);
+
+    displayState.clusterLayer = L.markerClusterGroup({
+        chunkedLoading: true,
+        showCoverageOnHover: false,
+        spiderfyOnMaxZoom: true,
+        animate: true,
+        animateAddingMarkers: true,
+        maxClusterRadius: zoom => (zoom >= 18 ? 34 : 56),
+        iconCreateFunction: cluster => clusterIcon(cluster.getChildCount())
     }).addTo(displayState.map);
 
-    L.marker([EVENT_LOCATION.lat, EVENT_LOCATION.lng], {
-        icon: L.divIcon({
-            className: 'campus-map-marker',
-            html: '<i class="fa-solid fa-location-dot"></i>',
-            iconSize: [38, 38],
-            iconAnchor: [19, 34]
-        })
-    }).addTo(displayState.map).bindPopup('Mathenge TTI planting area');
+    displayState.zoneLayer = L.layerGroup().addTo(displayState.map);
+    drawZones();
+}
+
+function setupControls() {
+    document.getElementById('streetLayerBtn')?.addEventListener('click', () => setBaseLayer('street'));
+    document.getElementById('satelliteLayerBtn')?.addEventListener('click', () => setBaseLayer('satellite'));
+    document.getElementById('densityToggle')?.addEventListener('click', toggleDensity);
+    document.getElementById('gpsButton')?.addEventListener('click', locateVolunteer);
+    document.getElementById('plantHereButton')?.addEventListener('click', plantTreeHere);
 }
 
 function setupSocket() {
     const socket = io();
+    socket.on('connect', () => setConnectionState(true));
+    socket.on('disconnect', () => setConnectionState(false));
     socket.on('new_planting', data => {
-        addFeedItem({
-            name: data.full_name,
-            role: data.role,
-            species: data.tree_species,
-            quantity: data.quantity,
-            photo: data.photo_path,
-            vip: Boolean(data.is_vip),
-            zone: data.planting_zone,
-            lat: data.lat,
-            lng: data.lng,
-            timestamp: data.timestamp,
-            record_number: data.record_number
-        }, true);
-        addMarker(data);
-        refreshDisplay();
+        const record = normalizeSocketRecord(data);
+        if (record) {
+            displayState.records.set(record.id, record);
+            renderMap();
+            updatePanels();
+            addFeedItem(record, true);
+        }
     });
-
     socket.on('participant_verified', data => {
-        addSystemMessage(`${data.full_name} marked ${data.status}`);
         if (data.status === 'Rejected') {
-            removeMarker(data.record_number || data.id);
-            refreshDisplay();
+            displayState.records.delete(data.record_number || data.id);
+            renderMap();
+            updatePanels();
         }
     });
 }
 
 function refreshDisplay() {
-    fetch('/api/stats')
-        .then(response => response.json())
-        .then(data => {
-            updateStats(data);
-            updateLeaderboard(data.leaderboard || []);
-            updateFeed(data.recent || []);
-            updateGallery(data.recent || []);
-            updateMap(data.recent || []);
-            updateTreeOfMoment();
+    Promise.all([
+        fetch('/api/stats').then(response => response.json()),
+        fetch('/api/map-records').then(response => response.json())
+    ])
+        .then(([stats, records]) => {
+            displayState.records = new Map(records.map(record => [record.id, record]));
+            updateStats(stats);
+            renderMap();
+            updatePanels();
+            updateFeed(records.slice(0, 8));
         })
-        .catch(() => {});
+        .catch(() => setConnectionState(false));
+}
+
+function setBaseLayer(layerName) {
+    if (displayState.activeLayer === layerName) return;
+    displayState.map.removeLayer(displayState.layers[displayState.activeLayer]);
+    displayState.layers[layerName].addTo(displayState.map);
+    displayState.activeLayer = layerName;
+    document.getElementById('streetLayerBtn')?.classList.toggle('active', layerName === 'street');
+    document.getElementById('satelliteLayerBtn')?.classList.toggle('active', layerName === 'satellite');
+}
+
+function toggleDensity() {
+    displayState.densityEnabled = !displayState.densityEnabled;
+    const button = document.getElementById('densityToggle');
+    button?.classList.toggle('active', displayState.densityEnabled);
+    button?.setAttribute('aria-pressed', String(displayState.densityEnabled));
+    renderHeatLayer();
+}
+
+function renderMap() {
+    const records = Array.from(displayState.records.values()).filter(hasCoordinates);
+    const treePoints = expandTreePoints(records);
+    displayState.clusterLayer.clearLayers();
+
+    treePoints.forEach(tree => {
+        displayState.clusterLayer.addLayer(createTreeMarker(tree));
+    });
+
+    renderHeatLayer();
+    drawZones();
+
+    if (displayState.firstFit && treePoints.length) {
+        const bounds = L.latLngBounds(treePoints.map(tree => [tree.lat, tree.lng]));
+        displayState.map.fitBounds(bounds.pad(0.22), { maxZoom: 17, animate: true, duration: 0.8 });
+        displayState.firstFit = false;
+    }
+}
+
+function createTreeMarker(record) {
+    const marker = L.circleMarker([record.lat, record.lng], {
+        radius: 5,
+        color: '#eaf7ee',
+        weight: 1.5,
+        fillColor: speciesColor(record.species),
+        fillOpacity: 0.92,
+        className: 'tree-dot-marker'
+    });
+
+    marker.bindPopup(treePopup(record), {
+        className: 'tree-popup',
+        maxWidth: 280
+    });
+    return marker;
+}
+
+function clusterIcon(count) {
+    let className = 'tree-cluster cluster-low';
+    let size = 36;
+    if (count > 100) {
+        className = 'tree-cluster cluster-forest';
+        size = 64;
+    } else if (count > 50) {
+        className = 'tree-cluster cluster-high';
+        size = 56;
+    } else if (count > 10) {
+        className = 'tree-cluster cluster-mid';
+        size = 46;
+    }
+
+    return L.divIcon({
+        html: `<div><i class="fa-solid fa-tree"></i><span>${formatNumber(count)}</span></div>`,
+        className,
+        iconSize: [size, size]
+    });
+}
+
+function renderHeatLayer() {
+    if (displayState.heatLayer) {
+        displayState.map.removeLayer(displayState.heatLayer);
+        displayState.heatLayer = null;
+    }
+    if (!displayState.densityEnabled) return;
+
+    const points = expandTreePoints(Array.from(displayState.records.values()).filter(hasCoordinates))
+        .map(tree => [tree.lat, tree.lng, 0.72]);
+
+    displayState.heatLayer = L.heatLayer(points, {
+        radius: 34,
+        blur: 26,
+        maxZoom: 18,
+        minOpacity: 0.26,
+        gradient: {
+            0.2: '#d9f5d6',
+            0.45: '#7ed68b',
+            0.7: '#25a45d',
+            1.0: '#064d2f'
+        }
+    }).addTo(displayState.map);
+}
+
+function drawZones() {
+    const zoneStats = getZoneStats();
+    displayState.zoneLayer.clearLayers();
+
+    plantingZones.forEach(zone => {
+        const stats = zoneStats.get(zone.name) || { trees: 0 };
+        const completion = Math.min(Math.round((stats.trees / zone.target) * 100), 100);
+        const polygon = L.polygon(zone.points, {
+            color: '#1e6a45',
+            weight: 1.4,
+            opacity: 0.62,
+            fillColor: zoneFillColor(completion),
+            fillOpacity: 0.14 + completion / 520
+        });
+        polygon.bindPopup(`
+            <div class="zone-popup">
+                <strong>${escapeHtml(zone.name)}</strong>
+                <span>Zone leader: ${escapeHtml(zone.leader)}</span>
+                <span>${formatNumber(stats.trees)} trees planted</span>
+                <span>${completion}% complete</span>
+            </div>
+        `);
+        polygon.addTo(displayState.zoneLayer);
+    });
 }
 
 function updateStats(data) {
     setText('treeCounter', formatNumber(data.trees));
     setText('participantCounter', formatNumber(data.participants));
-    setText('participantSessionCount', formatNumber(data.participants));
-    setText('co2Counter', `${formatNumber(Math.round(data.co2))} kg CO2`);
+    setText('co2Counter', `${formatNumber(Math.round(data.co2))} kg`);
 }
 
-function updateLeaderboard(leaderboard) {
-    const panel = document.querySelector('#departmentLeaderboard');
-    if (!panel) return;
-
-    if (!leaderboard.length) {
-        panel.innerHTML = '<div class="empty-state">Rankings appear after submissions.</div>';
-        return;
-    }
-
-    const max = Math.max(...leaderboard.map(item => item.total), 1);
-    panel.innerHTML = leaderboard.map((item, index) => `
-        <div class="leader-row">
-            <strong>${index + 1}</strong>
-            <span class="leader-name">${escapeHtml(item.role)}</span>
-            <span class="leader-count">${formatNumber(item.total)}</span>
-            <div class="bar"><span style="width: ${(item.total / max) * 100}%"></span></div>
-        </div>
-    `).join('');
+function updatePanels() {
+    const zoneStats = getZoneStats();
+    setText('zoneCounter', formatNumber(zoneStats.size));
+    renderZoneList(zoneStats);
 }
 
-function updateFeed(recent) {
+function renderZoneList(zoneStats) {
+    const list = document.getElementById('zoneList');
+    if (!list) return;
+
+    list.innerHTML = plantingZones.map(zone => {
+        const stats = zoneStats.get(zone.name) || { trees: 0 };
+        const completion = Math.min(Math.round((stats.trees / zone.target) * 100), 100);
+        return `
+            <article class="zone-row">
+                <div>
+                    <strong>${escapeHtml(zone.name)}</strong>
+                    <span>${escapeHtml(zone.leader)}</span>
+                </div>
+                <b>${formatNumber(stats.trees)}</b>
+                <div class="zone-progress"><span style="width: ${completion}%"></span></div>
+                <small>${completion}% complete</small>
+            </article>
+        `;
+    }).join('');
+}
+
+function updateFeed(records) {
     const feed = document.getElementById('liveFeed');
-    if (!recent.length) {
+    if (!feed) return;
+    if (!records.length) {
         feed.innerHTML = '<div class="empty-state">Waiting for participant submissions.</div>';
         return;
     }
     feed.innerHTML = '';
-    recent.slice(0, 8).forEach(item => addFeedItem(item, false));
+    records.forEach(record => addFeedItem(record, false));
 }
 
-function addFeedItem(item, prepend) {
+function addFeedItem(record, prepend) {
     const feed = document.getElementById('liveFeed');
-    const empty = feed.querySelector('.empty-state');
-    if (empty) empty.remove();
+    if (!feed) return;
+    feed.querySelector('.empty-state')?.remove();
 
-    const node = document.createElement('div');
-    node.className = `feed-item ${item.vip ? 'vip' : ''}`;
-    node.innerHTML = `
-        <img src="${photoUrl(item.photo)}" class="feed-image" alt="${escapeHtml(item.name)}">
+    const item = document.createElement('article');
+    item.className = 'gis-feed-item';
+    item.innerHTML = `
+        <img src="${photoUrl(record.photo)}" alt="${escapeHtml(record.name || 'Volunteer')}">
         <div>
-            <div class="feed-name">${escapeHtml(item.name || 'Participant')}</div>
-            <div class="feed-details">planted ${formatNumber(item.quantity || 0)} ${escapeHtml(item.species || 'tree')}</div>
-            <div class="feed-role">${escapeHtml(item.role || 'Contributor')}</div>
+            <strong>${escapeHtml(record.name || 'Volunteer')}</strong>
+            <span>${formatNumber(record.quantity || 1)} x ${escapeHtml(record.species || 'Tree')} in ${escapeHtml(record.zone || 'Planting zone')}</span>
         </div>
-        <img src="${photoUrl(item.photo)}" class="feed-thumb" alt="">
+        <i class="fa-solid fa-tree"></i>
     `;
-
-    if (prepend) feed.prepend(node);
-    else feed.appendChild(node);
-
-    while (feed.children.length > 10) {
+    if (prepend) feed.prepend(item);
+    else feed.appendChild(item);
+    while (feed.children.length > 8) {
         feed.removeChild(feed.lastElementChild);
     }
 }
 
-function addSystemMessage(message) {
-    const feed = document.getElementById('liveFeed');
-    const node = document.createElement('div');
-    node.className = 'feed-item';
-    node.innerHTML = `<div><div class="feed-name"><i class="fa-solid fa-shield-halved"></i> ${escapeHtml(message)}</div></div>`;
-    feed.prepend(node);
+function locateVolunteer() {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(position => {
+        const latlng = [position.coords.latitude, position.coords.longitude];
+        if (displayState.userMarker) displayState.userMarker.remove();
+        displayState.userMarker = L.circleMarker(latlng, {
+            radius: 8,
+            color: '#ffffff',
+            weight: 3,
+            fillColor: '#2477d4',
+            fillOpacity: 0.95,
+            className: 'gps-dot'
+        }).addTo(displayState.map).bindPopup('Your current GPS location');
+        displayState.map.flyTo(latlng, 18, { duration: 0.9 });
+    });
 }
 
-function updateGallery(recent) {
-    const gallery = document.getElementById('photoGallery');
-    if (!recent.length) {
-        gallery.innerHTML = '<div class="empty-state">Photos arrive from real submissions.</div>';
+function plantTreeHere() {
+    if (!navigator.geolocation) {
+        window.location.href = '/';
         return;
     }
-
-    gallery.innerHTML = recent
-        .filter(item => item.photo)
-        .slice(0, 12)
-        .map(item => `<img src="${photoUrl(item.photo)}" alt="${escapeHtml(item.name)}">`)
-        .join('');
-}
-
-function updateMap(recent) {
-    const visibleIds = new Set(recent.map(item => item.record_number).filter(Boolean));
-    displayState.markers.forEach((marker, id) => {
-        if (!visibleIds.has(id)) {
-            marker.remove();
-            displayState.markers.delete(id);
-        }
-    });
-
-    recent.forEach(item => addMarker({
-        id: item.record_number,
-        full_name: item.name,
-        role: item.role,
-        tree_species: item.species,
-        quantity: item.quantity,
-        photo_path: item.photo,
-        is_vip: item.vip,
-        lat: item.lat,
-        lng: item.lng
-    }));
-}
-
-function addMarker(item) {
-    const lat = Number(item.lat);
-    const lng = Number(item.lng);
-    const id = item.id || item.record_number;
-    if (!displayState.map || !id || Number.isNaN(lat) || Number.isNaN(lng)) return;
-    if (displayState.markers.has(id)) return;
-
-    const marker = L.marker([lat, lng], {
-        icon: L.divIcon({
-            className: `tree-map-marker ${item.is_vip ? 'vip' : ''}`,
-            html: '<i class="fa-solid fa-tree"></i>',
-            iconSize: [34, 42],
-            iconAnchor: [17, 38],
-            popupAnchor: [0, -34]
-        })
-    }).addTo(displayState.map);
-
-    marker.bindPopup(`
-        <div class="map-popup">
-            <img src="${photoUrl(item.photo_path)}" alt="">
-            <strong>${escapeHtml(item.full_name || 'Participant')}</strong>
-            <span>${escapeHtml(item.role || '')}</span>
-            <span>${formatNumber(item.quantity || 0)} x ${escapeHtml(item.tree_species || 'Tree')}</span>
-        </div>
-    `);
-
-    displayState.markers.set(id, marker);
-    const allMarkers = Array.from(displayState.markers.values());
-    if (allMarkers.length > 1) {
-        displayState.map.fitBounds(L.featureGroup(allMarkers).getBounds().pad(0.18), { maxZoom: 17 });
-    } else {
-        displayState.map.setView([lat, lng], 16);
-    }
-}
-
-function removeMarker(id) {
-    if (!id || !displayState.markers.has(id)) return;
-    displayState.markers.get(id).remove();
-    displayState.markers.delete(id);
-}
-
-function updateTreeOfMoment() {
-    const container = document.getElementById('treeOfTheMoment');
-    if (!container) return;
-
-    fetch('/api/tree-of-the-moment')
-        .then(response => response.json())
-        .then(data => {
-            if (!data || !data.full_name) {
-                container.innerHTML = '<div class="empty-state">A real record will appear after submissions.</div>';
-                return;
-            }
-
-            container.innerHTML = `
-                <img src="${photoUrl(data.photo_path)}" alt="${escapeHtml(data.full_name)}">
-                <div>
-                    <strong>${escapeHtml(data.full_name)}</strong>
-                    <span>${escapeHtml(data.role)} | ${escapeHtml(data.planting_zone)}</span><br>
-                    <span>${formatNumber(data.quantity)} x ${escapeHtml(data.tree_species)}</span><br>
-                    <span>${formatNumber(Math.round(data.co2_saved_kg || 0))} kg CO2 impact</span>
+    navigator.geolocation.getCurrentPosition(
+        position => {
+            const latlng = [position.coords.latitude, position.coords.longitude];
+            if (displayState.previewMarker) displayState.previewMarker.remove();
+            displayState.previewMarker = L.circleMarker(latlng, {
+                radius: 7,
+                color: '#ffffff',
+                weight: 2,
+                fillColor: '#1f9d55',
+                fillOpacity: 0.95,
+                className: 'tree-dot-marker pending'
+            }).addTo(displayState.map).bindPopup(`
+                <div class="tree-popup-card">
+                    <strong>Plant Tree Here</strong>
+                    <span>GPS point captured. Complete the registration form with photo evidence.</span>
+                    <a class="popup-action" href="/">Open registration</a>
                 </div>
-            `;
-        })
-        .catch(() => {});
+            `).openPopup();
+            displayState.map.flyTo(latlng, 18, { duration: 0.9 });
+        },
+        () => { window.location.href = '/'; },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
 }
 
 function setupWeather() {
@@ -304,19 +410,147 @@ function setupWeather() {
             const weather = data.current_weather;
             const icon = weather.weathercode > 2 ? 'fa-cloud' : 'fa-cloud-sun';
             document.getElementById('weatherDisplay').innerHTML =
-                `<i class="fa-solid ${icon}"></i> ${Math.round(weather.temperature)} C <span>Mathenge TTI</span>`;
+                `<i class="fa-solid ${icon}"></i> ${Math.round(weather.temperature)} C`;
         })
         .catch(() => {
             document.getElementById('weatherDisplay').innerHTML = '<i class="fa-solid fa-cloud-sun"></i> Mathenge TTI';
         });
 }
 
+function treePopup(record) {
+    return `
+        <div class="tree-popup-card">
+            <img src="${photoUrl(record.photo)}" alt="${escapeHtml(record.species || 'Tree photo')}">
+            <div class="popup-meta">
+                <span>Tree ID</span>
+                <strong>${escapeHtml(record.treeId || record.id)}</strong>
+            </div>
+            <div class="popup-grid">
+                <span>Species</span><strong>${escapeHtml(record.species || 'Tree')}</strong>
+                <span>Date planted</span><strong>${formatShortDate(record.timestamp)}</strong>
+                <span>Volunteer</span><strong>${escapeHtml(record.name || 'Volunteer')}</strong>
+                <span>Survival status</span><strong>${escapeHtml(record.status || 'Pending')}</strong>
+            </div>
+        </div>
+    `;
+}
+
+function getZoneStats() {
+    const stats = new Map();
+    Array.from(displayState.records.values()).forEach(record => {
+        const zoneName = record.zone || 'Other';
+        const current = stats.get(zoneName) || { trees: 0 };
+        current.trees += Number(record.quantity || 1);
+        stats.set(zoneName, current);
+    });
+    return stats;
+}
+
+function normalizeSocketRecord(data) {
+    const lat = Number(data.lat);
+    const lng = Number(data.lng);
+    if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
+    return {
+        id: data.record_number,
+        name: data.full_name,
+        role: data.role,
+        species: data.tree_species,
+        quantity: Number(data.quantity || 1),
+        zone: data.planting_zone,
+        photo: data.photo_path,
+        lat,
+        lng,
+        timestamp: data.timestamp,
+        status: 'Pending',
+        co2: data.co2_saved
+    };
+}
+
+function hasCoordinates(record) {
+    return !Number.isNaN(Number(record.lat)) && !Number.isNaN(Number(record.lng));
+}
+
+function expandTreePoints(records) {
+    const maxRenderedTrees = 8000;
+    const points = [];
+    for (const record of records) {
+        const quantity = Math.max(Number(record.quantity || 1), 1);
+        for (let index = 0; index < quantity && points.length < maxRenderedTrees; index += 1) {
+            const offset = treeOffset(record.id, index);
+            points.push({
+                ...record,
+                treeId: `${record.id}-${String(index + 1).padStart(3, '0')}`,
+                lat: Number(record.lat) + offset.lat,
+                lng: Number(record.lng) + offset.lng,
+                quantity: 1
+            });
+        }
+        if (points.length >= maxRenderedTrees) break;
+    }
+    return points;
+}
+
+function treeOffset(seed, index) {
+    if (index === 0) return { lat: 0, lng: 0 };
+    const base = hashCode(`${seed}-${index}`);
+    const angle = (base % 360) * Math.PI / 180;
+    const ring = Math.floor(Math.sqrt(index));
+    const distance = Math.min(0.000018 * ring, 0.00009);
+    return {
+        lat: Math.sin(angle) * distance,
+        lng: Math.cos(angle) * distance
+    };
+}
+
+function hashCode(value) {
+    let hash = 0;
+    const text = String(value);
+    for (let index = 0; index < text.length; index += 1) {
+        hash = ((hash << 5) - hash) + text.charCodeAt(index);
+        hash |= 0;
+    }
+    return Math.abs(hash);
+}
+
+function speciesColor(species) {
+    const name = String(species || '').toLowerCase();
+    if (name.includes('moringa')) return '#4f9f46';
+    if (name.includes('jacaranda')) return '#558f5a';
+    if (name.includes('acacia')) return '#2f8f4e';
+    if (name.includes('baobab')) return '#287047';
+    return '#1f9d55';
+}
+
+function zoneFillColor(completion) {
+    if (completion >= 75) return '#1f7a4a';
+    if (completion >= 40) return '#4f9f46';
+    return '#84c98d';
+}
+
 function photoUrl(path) {
-    return path ? `/static/${path}` : 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2280%22 height=%2280%22 viewBox=%220 0 80 80%22%3E%3Crect width=%2280%22 height=%2280%22 fill=%22%23e6eee4%22/%3E%3Cpath d=%22M40 16c8 7 13 15 13 23a13 13 0 1 1-26 0c0-8 5-16 13-23Z%22 fill=%22%235d8f48%22/%3E%3Cpath d=%22M40 40v20%22 stroke=%22%23244f32%22 stroke-width=%224%22 stroke-linecap=%22round%22/%3E%3C/svg%3E';
+    return path ? `/static/${encodeURI(path)}` : 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22240%22 height=%22160%22 viewBox=%220 0 240 160%22%3E%3Crect width=%22240%22 height=%22160%22 fill=%22%23eef5ee%22/%3E%3Ccircle cx=%22120%22 cy=%2272%22 r=%2228%22 fill=%22%2384c98d%22/%3E%3Cpath d=%22M120 76v40%22 stroke=%22%231f6b45%22 stroke-width=%228%22 stroke-linecap=%22round%22/%3E%3C/svg%3E';
+}
+
+function setConnectionState(connected) {
+    const state = document.getElementById('connectionState');
+    if (!state) return;
+    state.classList.toggle('offline', !connected);
+    state.innerHTML = connected
+        ? '<i class="fa-solid fa-circle"></i> Live'
+        : '<i class="fa-solid fa-triangle-exclamation"></i> Reconnecting';
 }
 
 function formatNumber(num) {
     return Number(num || 0).toLocaleString();
+}
+
+function formatShortDate(value) {
+    if (!value) return 'Pending';
+    return new Date(value).toLocaleDateString([], {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+    });
 }
 
 function escapeHtml(value) {

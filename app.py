@@ -111,7 +111,7 @@ def set_security_headers(response):
         "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdn.socket.io https://unpkg.com https://cdnjs.cloudflare.com; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://unpkg.com; "
         "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com data:; "
-        "img-src 'self' data: blob: https://*.tile.openstreetmap.org; "
+        "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://server.arcgisonline.com; "
         "connect-src 'self' https://api.open-meteo.com wss:;"
     )
     if request.is_secure:
@@ -540,6 +540,42 @@ def get_stats():
         'leaderboard': leaderboard,
         'recent': recent
     })
+
+@app.route('/api/map-records')
+def get_map_records():
+    """Return visible planting records for the GIS display map."""
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("""
+        SELECT record_number, full_name, role, tree_species, quantity,
+               planting_zone, photo_path, latitude, longitude, timestamp,
+               status, co2_saved_kg
+        FROM participants
+        WHERE status != 'Rejected'
+          AND latitude IS NOT NULL
+          AND longitude IS NOT NULL
+        ORDER BY timestamp DESC
+        LIMIT 5000
+    """)
+    records = []
+    for row in c.fetchall():
+        quantity = max(int(row['quantity'] or 1), 1)
+        records.append({
+            'id': row['record_number'],
+            'name': row['full_name'],
+            'role': row['role'],
+            'species': row['tree_species'],
+            'quantity': quantity,
+            'zone': row['planting_zone'],
+            'photo': row['photo_path'],
+            'lat': row['latitude'],
+            'lng': row['longitude'],
+            'timestamp': row['timestamp'],
+            'status': row['status'],
+            'co2': row['co2_saved_kg']
+        })
+    conn.close()
+    return jsonify(records)
 
 @app.route('/api/participants')
 @login_required

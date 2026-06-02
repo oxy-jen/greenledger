@@ -4,104 +4,111 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
 {% endblock %}
 
 {% block content %}
-<main class="tv-page">
-    <section class="tv-frame">
-        <header class="tv-header">
-            <div class="brand">
-                <span class="brand-mark"><i class="fa-solid fa-leaf"></i></span>
-                <span>RootLedger</span>
-            </div>
-            <div class="tv-divider"></div>
+<main class="gis-display">
+    <div id="liveMap" class="gis-map" aria-label="RootLedger live planting map"></div>
+
+    <header class="gis-topbar">
+        <div class="brand">
+            <span class="brand-mark"><i class="fa-solid fa-leaf"></i></span>
+            <span>RootLedger</span>
+        </div>
+        <div class="gis-event">
             <strong>Mathenge TTI Mazingira Day 2026</strong>
-            <div class="tv-divider"></div>
-            <span>Live Event Display</span>
-            <time id="liveClock" class="tv-clock">--:--:--</time>
-            <button id="displayThemeToggle" class="theme-toggle" type="button" title="Toggle green display mode">
-                <i class="fa-solid fa-wand-magic-sparkles"></i>
-                <span>Green Mode</span>
-            </button>
-            <div class="tv-avatar"><i class="fa-solid fa-user-tie"></i></div>
-        </header>
+            <span>Live environmental intelligence dashboard</span>
+        </div>
+        <time id="liveClock" class="gis-clock">--:--:--</time>
+    </header>
 
-        <section class="tv-grid">
-            <aside class="tv-left">
-                <article class="tv-card hero-stat">
-                    <i class="fa-solid fa-tree"></i>
-                    <strong id="treeCounter">0</strong>
-                    <span>Live Trees</span>
-                </article>
-
-                <article class="tv-card impact-stat">
-                    <i class="fa-solid fa-cloud"></i>
-                    <div>
-                        <strong id="co2Counter">0 kg CO2</strong>
-                        <span>Environmental Impact</span>
-                    </div>
-                </article>
-
-                <article class="tv-card mini-weather">
-                    <h2>Live Weather</h2>
-                    <div id="weatherDisplay"><i class="fa-solid fa-cloud-sun"></i> --</div>
-                </article>
-
-                <article class="tv-card mini-participants">
-                    <h2>Live Participants</h2>
-                    <strong id="participantCounter">0</strong>
-                    <span>participant: <b id="participantSessionCount">0</b></span>
-                </article>
-            </aside>
-
-            <section class="tv-center">
-                <article class="map-forest-card">
-                    <div class="map-title-chip">
-                        <i class="fa-solid fa-circle"></i>
-                        <strong>Live Planting Map</strong>
-                    </div>
-                    <div class="map-location-chip">
-                        <i class="fa-solid fa-location-dot"></i>
-                        <span>Mathenge TTI, Othaya</span>
-                    </div>
-                    <div id="liveMap"></div>
-                    <div class="map-legend-chip">
-                        <span><b class="legend-dot moringa"></b>Moringa</span>
-                        <span><b class="legend-dot jacaranda"></b>Jacaranda</span>
-                        <span><b class="legend-dot acacia"></b>Acacia</span>
-                        <span><b class="legend-dot other"></b>Other</span>
-                    </div>
-                </article>
-
-                <article class="tv-card moments-card">
-                    <div class="tv-card-head">
-                        <h2>Planting Moments</h2>
-                        <span>Live</span>
-                    </div>
-                    <div id="photoGallery" class="moments-grid"></div>
-                </article>
-            </section>
-
-            <aside class="tv-right">
-                <article class="tv-card feed-card">
-                    <h2>Live Activity Feed</h2>
-                    <div id="liveFeed" class="tv-feed">
-                        <div class="empty-state">Waiting for participant submissions.</div>
-                    </div>
-                </article>
-
-                <article class="tv-card competition-card">
-                    <h2>Department Competition</h2>
-                    <div id="departmentLeaderboard" class="tv-leaderboard"></div>
-                </article>
-            </aside>
-        </section>
+    <section class="gis-dashboard" aria-label="Live planting metrics">
+        <article class="gis-stat">
+            <i class="fa-solid fa-tree"></i>
+            <span>Total Trees</span>
+            <strong id="treeCounter">0</strong>
+        </article>
+        <article class="gis-stat">
+            <i class="fa-solid fa-users"></i>
+            <span>Volunteers</span>
+            <strong id="participantCounter">0</strong>
+        </article>
+        <article class="gis-stat">
+            <i class="fa-solid fa-location-dot"></i>
+            <span>Planting Zones</span>
+            <strong id="zoneCounter">0</strong>
+        </article>
+        <article class="gis-stat">
+            <i class="fa-solid fa-cloud"></i>
+            <span>Carbon Impact</span>
+            <strong id="co2Counter">0 kg</strong>
+        </article>
     </section>
+
+    <section class="gis-controls" aria-label="Map controls">
+        <div class="segmented-control" role="group" aria-label="Map layer">
+            <button id="streetLayerBtn" class="active" type="button">
+                <i class="fa-solid fa-road"></i>
+                <span>Street</span>
+            </button>
+            <button id="satelliteLayerBtn" type="button">
+                <i class="fa-solid fa-satellite"></i>
+                <span>Satellite</span>
+            </button>
+        </div>
+        <button id="densityToggle" class="gis-toggle" type="button" aria-pressed="false">
+            <i class="fa-solid fa-fire-flame-simple"></i>
+            <span>Tree Density</span>
+        </button>
+        <button id="gpsButton" class="gis-toggle" type="button">
+            <i class="fa-solid fa-location-crosshairs"></i>
+            <span>My Location</span>
+        </button>
+        <button id="plantHereButton" class="gis-toggle primary" type="button">
+            <i class="fa-solid fa-circle-plus"></i>
+            <span>Plant Tree Here</span>
+        </button>
+    </section>
+
+    <aside class="gis-sidepanel" aria-label="Planting zones">
+        <div class="gis-panel-head">
+            <div>
+                <h1>Planting Zones</h1>
+                <p>Live completion by campus area</p>
+            </div>
+            <span id="weatherDisplay"><i class="fa-solid fa-cloud-sun"></i> --</span>
+        </div>
+        <div id="zoneList" class="zone-list"></div>
+    </aside>
+
+    <section class="gis-feed" aria-label="Live activity feed">
+        <div class="gis-panel-head">
+            <div>
+                <h2>Live Activity</h2>
+                <p>New submissions update instantly</p>
+            </div>
+            <span id="connectionState"><i class="fa-solid fa-circle"></i> Live</span>
+        </div>
+        <div id="liveFeed" class="gis-feed-list">
+            <div class="empty-state">Waiting for participant submissions.</div>
+        </div>
+    </section>
+
+    <div class="gis-legend" aria-label="Map legend">
+        <span><b class="legend-dot marker"></b>Tree marker</span>
+        <span><b class="legend-dot cluster-low"></b>1-10</span>
+        <span><b class="legend-dot cluster-mid"></b>11-50</span>
+        <span><b class="legend-dot cluster-high"></b>51-100</span>
+        <span><b class="legend-dot cluster-forest"></b>100+</span>
+    </div>
 </main>
 {% endblock %}
 
 {% block extra_js %}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
 <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 <script src="{{ url_for('static', filename='js/display.js') }}"></script>
 {% endblock %}
