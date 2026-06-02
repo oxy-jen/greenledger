@@ -119,6 +119,16 @@ function fetchParticipants() {
         });
 }
 
+function participantPhotoUrl(participant) {
+    const path = participant?.photo_url || participant?.photo_path;
+    if (!path) return 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22240%22 height=%22160%22 viewBox=%220 0 240 160%22%3E%3Crect width=%22240%22 height=%22160%22 fill=%22%23eef5ee%22/%3E%3Ccircle cx=%22120%22 cy=%2272%22 r=%2228%22 fill=%22%2384c98d%22/%3E%3Cpath d=%22M120 76v40%22 stroke=%22%231f6b45%22 stroke-width=%228%22 stroke-linecap=%22round%22/%3E%3C/svg%3E';
+    const value = String(path);
+    if (/^(data:|blob:|https?:\/\/|\/)/i.test(value)) return value;
+
+    const normalized = value.replace(/\\/g, '/').replace(/^static\//, '');
+    return `/static/${normalized.split('/').map(encodeURIComponent).join('/')}`;
+}
+
 function renderParticipants(participants) {
     const container = document.getElementById('participantList');
     if (!container) return;
@@ -139,7 +149,7 @@ function renderParticipants(participants) {
         const statusClass = p.status === 'Verified' ? 'status-verified' : 
                            p.status === 'Rejected' ? 'status-rejected' : 'status-pending';
         const isVIP = p.is_vip === 1 || p.is_vip === true;
-        const photoUrl = p.photo_path ? `/static/${encodeURI(p.photo_path)}` : '/static/images/placeholder.jpg';
+        const photoUrl = participantPhotoUrl(p);
         
         html += `
             <div class="participant-item ${isVIP ? 'vip' : ''}" data-id="${p.id}">
@@ -256,7 +266,7 @@ function openRejectModal(id) {
                 </button>
             </div>
             <div class="reject-body">
-                <img src="/static/${encodeURI(participant.photo_path)}" alt="${escapeHtml(participant.full_name)}" class="modal-photo">
+                <img src="${participantPhotoUrl(participant)}" alt="${escapeHtml(participant.full_name)}" class="modal-photo">
                 <div class="modal-details">
                     <p><strong>${escapeHtml(participant.full_name)}</strong></p>
                     <p>${escapeHtml(participant.quantity)} x ${escapeHtml(participant.tree_species)} | ${escapeHtml(participant.planting_zone)}</p>
@@ -342,7 +352,7 @@ function showParticipantModal(participant) {
                 </button>
             </div>
             <div class="modal-body">
-                <img src="/static/${encodeURI(participant.photo_path)}" alt="${escapeHtml(participant.full_name)}" class="modal-photo">
+                <img src="${participantPhotoUrl(participant)}" alt="${escapeHtml(participant.full_name)}" class="modal-photo">
                 <div class="modal-details">
                     <p><strong>Record:</strong> ${escapeHtml(participant.record_number)}</p>
                     <p><strong>Role:</strong> ${escapeHtml(participant.role)}</p>

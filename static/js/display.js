@@ -165,10 +165,16 @@ function setupSocket() {
     socket.on('new_planting', data => {
         const record = normalizeSocketRecord(data);
         if (record) {
-            displayState.records.set(record.id, record);
-            renderMap();
-            updatePanels();
+            if (hasCoordinates(record)) {
+                displayState.records.set(record.id, record);
+                renderMap();
+                updatePanels();
+            }
             addFeedItem(record, true);
+            renderMoments([record, ...Array.from(document.querySelectorAll('#momentsGrid img')).map(img => ({
+                name: img.alt,
+                photo: img.getAttribute('data-photo-path') || ''
+            }))]);
         }
     });
     socket.on('participant_verified', data => {
@@ -187,10 +193,11 @@ function refreshDisplay() {
     ])
         .then(([stats, records]) => {
             displayState.records = new Map(records.map(record => [record.id, record]));
+            const recentRecords = (stats.recent || []).map(normalizeApiRecord);
             updateStats(stats);
             renderMap();
             updatePanels();
-            updateFeed(records.slice(0, 8));
+            updateFeed(recentRecords.slice(0, 8));
         })
         .catch(() => setConnectionState(false));
 }
@@ -427,7 +434,7 @@ function renderMoments(records) {
     }
 
     grid.innerHTML = photos.map(record => `
-        <img src="${photoUrl(record.photo)}" alt="${escapeHtml(record.name || 'Planting moment')}">
+        <img src="${photoUrl(record.photo)}" alt="${escapeHtml(record.name || 'Planting moment')}" data-photo-path="${escapeHtml(record.photo)}">
     `).join('');
 }
 
@@ -549,7 +556,6 @@ function getZoneStats() {
 function normalizeSocketRecord(data) {
     const lat = Number(data.lat);
     const lng = Number(data.lng);
-    if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
     return {
         id: data.record_number,
         name: data.full_name,
@@ -557,17 +563,39 @@ function normalizeSocketRecord(data) {
         species: data.tree_species,
         quantity: Number(data.quantity || 1),
         zone: data.planting_zone,
-        photo: data.photo_path,
-        lat,
-        lng,
+        photo: data.photo_url || data.photo_path,
+        lat: Number.isNaN(lat) ? null : lat,
+        lng: Number.isNaN(lng) ? null : lng,
         timestamp: data.timestamp,
         status: 'Pending',
         co2: data.co2_saved
     };
 }
 
+function normalizeApiRecord(record) {
+    const lat = Number(record.lat);
+    const lng = Number(record.lng);
+    return {
+        id: record.id || record.record_number,
+        name: record.name,
+        role: record.role,
+        species: record.species,
+        quantity: Number(record.quantity || 1),
+        zone: record.zone,
+        photo: record.photo_url || record.photo,
+        lat: Number.isNaN(lat) ? null : lat,
+        lng: Number.isNaN(lng) ? null : lng,
+        timestamp: record.timestamp,
+        status: record.status || 'Pending',
+        co2: record.co2
+    };
+}
+
 function hasCoordinates(record) {
-    return !Number.isNaN(Number(record.lat)) && !Number.isNaN(Number(record.lng));
+    return record.lat !== null
+        && record.lng !== null
+        && Number.isFinite(Number(record.lat))
+        && Number.isFinite(Number(record.lng));
 }
 
 function expandTreePoints(records) {
@@ -628,7 +656,12 @@ function zoneFillColor(completion) {
 }
 
 function photoUrl(path) {
-    return path ? `/static/${encodeURI(path)}` : 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22240%22 height=%22160%22 viewBox=%220 0 240 160%22%3E%3Crect width=%22240%22 height=%22160%22 fill=%22%23eef5ee%22/%3E%3Ccircle cx=%22120%22 cy=%2272%22 r=%2228%22 fill=%22%2384c98d%22/%3E%3Cpath d=%22M120 76v40%22 stroke=%22%231f6b45%22 stroke-width=%228%22 stroke-linecap=%22round%22/%3E%3C/svg%3E';
+    if (!path) return 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22240%22 height=%22160%22 viewBox=%220 0 240 160%22%3E%3Crect width=%22240%22 height=%22160%22 fill=%22%23eef5ee%22/%3E%3Ccircle cx=%22120%22 cy=%2272%22 r=%2228%22 fill=%22%2384c98d%22/%3E%3Cpath d=%22M120 76v40%22 stroke=%22%231f6b45%22 stroke-width=%228%22 stroke-linecap=%22round%22/%3E%3C/svg%3E';
+    const value = String(path);
+    if (/^(data:|blob:|https?:\/\/|\/)/i.test(value)) return value;
+
+    const normalized = value.replace(/\\/g, '/').replace(/^static\//, '');
+    return `/static/${normalized.split('/').map(encodeURIComponent).join('/')}`;
 }
 
 function setConnectionState(connected) {

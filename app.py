@@ -18,6 +18,7 @@ import zipfile
 from io import BytesIO, StringIO
 
 app = Flask(__name__)
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 APP_NAME = 'RootLedger'
 RENDER_EXTERNAL_URL = os.environ.get('RENDER_EXTERNAL_URL', '')
 DEFAULT_PRIMARY_HOST = urlparse(RENDER_EXTERNAL_URL).netloc or 'rootledger-osaw.onrender.com'
@@ -27,7 +28,7 @@ ALLOWED_IMAGE_EXTENSIONS = {'jpg', 'jpeg', 'png', 'webp'}
 
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY') or ('dev-secret' if not IS_PRODUCTION else secrets.token_urlsafe(64))
-app.config['UPLOAD_FOLDER'] = os.path.join('static', 'uploads')
+app.config['UPLOAD_FOLDER'] = os.path.join(BASE_DIR, 'static', 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max limit
 app.config['DATABASE'] = os.environ.get('DATABASE_PATH', os.path.join('instance', 'database.db'))
 app.config['PREFERRED_URL_SCHEME'] = 'https'
@@ -43,14 +44,18 @@ os.makedirs('instance', exist_ok=True)
 os.makedirs('backups', exist_ok=True)
 
 def allowed_origins():
-    configured = os.environ.get('ALLOWED_ORIGINS')
-    if configured:
-        return [origin.strip() for origin in configured.split(',') if origin.strip()]
-    return [
+    origins = {
         f'https://{PRIMARY_HOST}',
         'http://localhost:5000',
         'http://127.0.0.1:5000'
-    ]
+    }
+    if RENDER_EXTERNAL_URL:
+        origins.add(RENDER_EXTERNAL_URL.rstrip('/'))
+
+    configured = os.environ.get('ALLOWED_ORIGINS')
+    if configured:
+        origins.update(origin.strip().rstrip('/') for origin in configured.split(',') if origin.strip())
+    return sorted(origins)
 
 
 # Initialize SocketIO
@@ -276,6 +281,15 @@ def parse_float(value):
     except (TypeError, ValueError):
         return None
 
+def static_photo_url(photo_path):
+    """Return a browser-safe static URL for stored participant photos."""
+    if not photo_path:
+        return ''
+    normalized = str(photo_path).replace('\\', '/').lstrip('/')
+    if normalized.startswith('static/'):
+        normalized = normalized[len('static/'):]
+    return url_for('static', filename=normalized)
+
 def resolve_location(browser_lat, browser_lng, browser_accuracy, exif_location):
     """Prefer EXIF GPS when browser accuracy is poor; otherwise use browser GPS."""
     lat = parse_float(browser_lat)
@@ -412,6 +426,7 @@ def submit_planting():
             'quantity': quantity,
             'planting_zone': planting_zone,
             'photo_path': photo_path,
+            'photo_url': static_photo_url(photo_path),
             'lat': participant['latitude'],
             'lng': participant['longitude'],
             'timestamp': participant['timestamp'],
@@ -530,8 +545,9 @@ def get_stats():
         WHERE {visible_filter}
         ORDER BY timestamp DESC LIMIT 10
     """)
-    recent = [{'name': row[0], 'role': row[1], 'species': row[2], 
-               'quantity': row[3], 'photo': row[4], 'vip': bool(row[5]),
+    recent = [{'name': row[0], 'role': row[1], 'species': row[2],
+               'quantity': row[3], 'photo': row[4],
+               'photo_url': static_photo_url(row[4]), 'vip': bool(row[5]),
                'zone': row[6], 'lat': row[7], 'lng': row[8],
                'timestamp': row[9], 'record_number': row[10]} 
               for row in c.fetchall()]
@@ -573,6 +589,7 @@ def get_map_records():
             'quantity': quantity,
             'zone': row['planting_zone'],
             'photo': row['photo_path'],
+            'photo_url': static_photo_url(row['photo_path']),
             'lat': row['latitude'],
             'lng': row['longitude'],
             'timestamp': row['timestamp'],
@@ -592,7 +609,11 @@ def get_participants():
         SELECT * FROM participants
         ORDER BY timestamp DESC
     """)
-    participants = [dict(row) for row in c.fetchall()]
+    participants = []
+    for row in c.fetchall():
+        participant = dict(row)
+        participant['photo_url'] = static_photo_url(participant.get('photo_path'))
+        participants.append(participant)
     conn.close()
     return jsonify(participants)
 
@@ -609,7 +630,10 @@ def tree_of_the_moment():
     """)
     row = c.fetchone()
     conn.close()
-    return jsonify(dict(row) if row else {})
+    participant = dict(row) if row else {}
+    if participant:
+        participant['photo_url'] = static_photo_url(participant.get('photo_path'))
+    return jsonify(participant)
 
 @app.route('/api/verify/<participant_id>', methods=['POST'])
 @login_required
@@ -760,7 +784,7 @@ def export_data():
             for row in rows:
                 photo_path = row[7]  # Assuming photo_path is at index 7
                 if photo_path:
-                    full_path = os.path.join('static', photo_path)
+                    full_path = os.path.join(BASE_DIR, 'static', photo_path)
                     if os.path.exists(full_path):
                         zip_file.write(full_path, f'photos/{os.path.basename(photo_path)}')
         
