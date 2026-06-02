@@ -25,8 +25,7 @@ os.makedirs('instance', exist_ok=True)
 os.makedirs('backups', exist_ok=True)
 
 # Initialize SocketIO
-socketio = SocketIO(app, cors_allowed_origins="*")
-
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 # --- Database Setup ---
 def init_db():
     """Initialize SQLite database with all tables"""
