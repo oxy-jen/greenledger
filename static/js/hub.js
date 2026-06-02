@@ -1,4 +1,4 @@
-// Operations Hub JavaScript - GreenLedger Admin Panel
+// Operations Hub JavaScript - RootLedger Admin Panel
 
 // Global state
 let hubState = {
@@ -30,6 +30,11 @@ function initializeHub() {
     
     // Set up verification modal
     setupVerificationModal();
+}
+
+function csrfHeader() {
+    const token = document.querySelector('meta[name="csrf-token"]')?.content;
+    return token ? { 'X-CSRF-Token': token } : {};
 }
 
 function setupEventListeners() {
@@ -134,30 +139,30 @@ function renderParticipants(participants) {
         const statusClass = p.status === 'Verified' ? 'status-verified' : 
                            p.status === 'Rejected' ? 'status-rejected' : 'status-pending';
         const isVIP = p.is_vip === 1 || p.is_vip === true;
-        const photoUrl = p.photo_path ? `/static/${p.photo_path}` : '/static/images/placeholder.jpg';
+        const photoUrl = p.photo_path ? `/static/${encodeURI(p.photo_path)}` : '/static/images/placeholder.jpg';
         
         html += `
             <div class="participant-item ${isVIP ? 'vip' : ''}" data-id="${p.id}">
                 <div class="participant-info">
-                    <img src="${photoUrl}" alt="${p.full_name}" class="participant-photo" 
+                    <img src="${photoUrl}" alt="${escapeHtml(p.full_name)}" class="participant-photo"
                          onerror="this.src='/static/images/placeholder.jpg'">
                     <div class="participant-details">
                         <div class="participant-name">
-                            ${p.full_name}
+                            ${escapeHtml(p.full_name)}
                             ${isVIP ? '<span class="status-badge status-pending"><i class="fa-solid fa-star"></i> VIP</span>' : ''}
                         </div>
                         <div class="participant-meta">
-                            <span>${p.role}</span>
+                            <span>${escapeHtml(p.role)}</span>
                             <span>|</span>
-                            <span>${p.quantity} x ${p.tree_species}</span>
+                            <span>${formatNumber(p.quantity)} x ${escapeHtml(p.tree_species)}</span>
                             <span>|</span>
-                            <span>${p.planting_zone}</span>
+                            <span>${escapeHtml(p.planting_zone)}</span>
                         </div>
                         <div class="participant-time">${formatDate(p.timestamp)}</div>
                     </div>
                 </div>
                 <div class="participant-actions">
-                    <span class="status-badge ${statusClass}">${p.status}</span>
+                    <span class="status-badge ${statusClass}">${escapeHtml(p.status)}</span>
                     ${p.status === 'Pending' ? `
                         <button onclick="verifyParticipant('${p.id}', 'Verified')" class="btn btn-sm btn-success">
                             <i class="fa-solid fa-check"></i> Approve
@@ -212,6 +217,7 @@ function verifyParticipant(id, status, rejectionScope = null, rejectionNote = ''
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
+            ...csrfHeader()
         },
         body: JSON.stringify({
             status: status,
@@ -250,7 +256,7 @@ function openRejectModal(id) {
                 </button>
             </div>
             <div class="reject-body">
-                <img src="/static/${participant.photo_path}" alt="${participant.full_name}" class="modal-photo">
+                <img src="/static/${encodeURI(participant.photo_path)}" alt="${escapeHtml(participant.full_name)}" class="modal-photo">
                 <div class="modal-details">
                     <p><strong>${escapeHtml(participant.full_name)}</strong></p>
                     <p>${escapeHtml(participant.quantity)} x ${escapeHtml(participant.tree_species)} | ${escapeHtml(participant.planting_zone)}</p>
@@ -296,6 +302,7 @@ function pinParticipant(id) {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
+            ...csrfHeader()
         }
     })
     .then(response => response.json())
@@ -329,21 +336,21 @@ function showParticipantModal(participant) {
     modal.innerHTML = `
         <div class="modal-content">
             <div class="modal-header">
-                <h3>${participant.full_name}</h3>
+                <h3>${escapeHtml(participant.full_name)}</h3>
                 <button onclick="this.closest('.modal-overlay').remove()" class="modal-close" aria-label="Close">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
             <div class="modal-body">
-                <img src="/static/${participant.photo_path}" alt="${participant.full_name}" class="modal-photo">
+                <img src="/static/${encodeURI(participant.photo_path)}" alt="${escapeHtml(participant.full_name)}" class="modal-photo">
                 <div class="modal-details">
-                    <p><strong>Record:</strong> ${participant.record_number}</p>
-                    <p><strong>Role:</strong> ${participant.role}</p>
-                    <p><strong>Species:</strong> ${participant.tree_species}</p>
-                    <p><strong>Quantity:</strong> ${participant.quantity}</p>
-                    <p><strong>Zone:</strong> ${participant.planting_zone}</p>
-                    <p><strong>CO2 Saved:</strong> ${participant.co2_saved_kg} kg</p>
-                    <p><strong>Status:</strong> ${participant.status}</p>
+                    <p><strong>Record:</strong> ${escapeHtml(participant.record_number)}</p>
+                    <p><strong>Role:</strong> ${escapeHtml(participant.role)}</p>
+                    <p><strong>Species:</strong> ${escapeHtml(participant.tree_species)}</p>
+                    <p><strong>Quantity:</strong> ${formatNumber(participant.quantity)}</p>
+                    <p><strong>Zone:</strong> ${escapeHtml(participant.planting_zone)}</p>
+                    <p><strong>CO2 Saved:</strong> ${formatNumber(Math.round(participant.co2_saved_kg || 0))} kg</p>
+                    <p><strong>Status:</strong> ${escapeHtml(participant.status)}</p>
                     ${participant.rejection_scope ? `<p><strong>Rejected Part:</strong> ${escapeHtml(participant.rejection_scope)}</p>` : ''}
                     ${participant.rejection_note ? `<p><strong>Admin Note:</strong> ${escapeHtml(participant.rejection_note)}</p>` : ''}
                     <p><strong>Time:</strong> ${formatDate(participant.timestamp)}</p>
@@ -446,7 +453,8 @@ function createBackup() {
     }
     
     fetch('/backup/create', {
-        method: 'POST'
+        method: 'POST',
+        headers: csrfHeader()
     })
     .then(response => response.json())
     .then(data => {

@@ -23,7 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function setupThemeToggle() {
     const toggle = document.getElementById('displayThemeToggle');
-    const savedTheme = localStorage.getItem('greenledger-display-theme');
+    const savedTheme = localStorage.getItem('rootledger-display-theme');
     if (savedTheme === 'neon') {
         document.body.classList.add('neon-mode');
     }
@@ -31,7 +31,7 @@ function setupThemeToggle() {
     toggle.addEventListener('click', () => {
         document.body.classList.toggle('neon-mode');
         localStorage.setItem(
-            'greenledger-display-theme',
+            'rootledger-display-theme',
             document.body.classList.contains('neon-mode') ? 'neon' : 'light'
         );
     });

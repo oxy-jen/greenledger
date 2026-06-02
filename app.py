@@ -2,8 +2,11 @@ import os
 import uuid
 import json
 from datetime import datetime
-from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, session, flash
+import hmac
+import secrets
+from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, session, flash, abort
 from flask_socketio import SocketIO, emit
+from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.utils import secure_filename
 from PIL import Image
 import sqlite3
@@ -14,18 +17,106 @@ import zipfile
 from io import BytesIO, StringIO
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret')
+APP_NAME = 'RootLedger'
+PRIMARY_HOST = os.environ.get('PRIMARY_HOST', 'greenledger-osaw.onrender.com')
+IS_PRODUCTION = os.environ.get('RENDER') == 'true' or os.environ.get('FLASK_ENV') == 'production'
+ALLOWED_IMAGE_EXTENSIONS = {'jpg', 'jpeg', 'png', 'webp'}
+
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY') or ('dev-secret' if not IS_PRODUCTION else secrets.token_urlsafe(64))
 app.config['UPLOAD_FOLDER'] = os.path.join('static', 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max limit
 app.config['DATABASE'] = os.path.join('instance', 'database.db')
+app.config['PREFERRED_URL_SCHEME'] = 'https'
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = IS_PRODUCTION
+app.config['FORCE_HTTPS'] = os.environ.get('FORCE_HTTPS', '1' if IS_PRODUCTION else '0') == '1'
+app.config['APP_NAME'] = APP_NAME
 
 # Ensure directories exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs('instance', exist_ok=True)
 os.makedirs('backups', exist_ok=True)
 
+def allowed_origins():
+    configured = os.environ.get('ALLOWED_ORIGINS')
+    if configured:
+        return [origin.strip() for origin in configured.split(',') if origin.strip()]
+    return [
+        f'https://{PRIMARY_HOST}',
+        'http://localhost:5000',
+        'http://127.0.0.1:5000'
+    ]
+
+
 # Initialize SocketIO
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
+socketio = SocketIO(app, cors_allowed_origins=allowed_origins(), async_mode="threading")
+
+
+def hash_password(password, salt=None):
+    salt = salt or secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 260000)
+    return f'pbkdf2_sha256${salt}${digest.hex()}'
+
+
+def verify_password(password, stored_hash):
+    if not stored_hash:
+        return False
+    if stored_hash.startswith('pbkdf2_sha256$'):
+        _, salt, digest = stored_hash.split('$', 2)
+        return hmac.compare_digest(hash_password(password, salt), stored_hash)
+    return hmac.compare_digest(hashlib.sha256(password.encode()).hexdigest(), stored_hash)
+
+
+def csrf_token():
+    token = session.get('_csrf_token')
+    if not token:
+        token = secrets.token_urlsafe(32)
+        session['_csrf_token'] = token
+    return token
+
+
+@app.context_processor
+def inject_globals():
+    return {
+        'app_name': APP_NAME,
+        'csrf_token': csrf_token
+    }
+
+
+@app.before_request
+def enforce_https_and_csrf():
+    if app.config['FORCE_HTTPS'] and not request.is_secure:
+        return redirect(request.url.replace('http://', 'https://', 1), code=301)
+
+    if request.method in {'POST', 'PUT', 'PATCH', 'DELETE'}:
+        sent_token = request.headers.get('X-CSRF-Token') or request.form.get('csrf_token')
+        if not sent_token or not hmac.compare_digest(sent_token, session.get('_csrf_token', '')):
+            abort(400)
+
+
+@app.after_request
+def set_security_headers(response):
+    response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+    response.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
+    response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+    response.headers.setdefault('Permissions-Policy', 'camera=(self), geolocation=(self), microphone=()')
+    response.headers.setdefault(
+        'Content-Security-Policy',
+        "default-src 'self'; "
+        "base-uri 'self'; "
+        "form-action 'self'; "
+        "frame-ancestors 'self'; "
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdn.socket.io https://unpkg.com https://cdnjs.cloudflare.com; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://unpkg.com; "
+        "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com data:; "
+        "img-src 'self' data: blob: https://*.tile.openstreetmap.org; "
+        "connect-src 'self' https://api.open-meteo.com wss:;"
+    )
+    if request.is_secure:
+        response.headers.setdefault('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+    return response
 # --- Database Setup ---
 def init_db():
     """Initialize SQLite database with all tables"""
@@ -81,10 +172,17 @@ def init_db():
         password_hash TEXT NOT NULL
     )''')
     
-    # Create default admin if not exists
-    admin_hash = hashlib.sha256('admin123'.encode()).hexdigest()
-    c.execute("INSERT OR IGNORE INTO admins (username, password_hash) VALUES (?, ?)", 
-              ('admin', admin_hash))
+    # Create/update admin from environment. The old admin123 fallback is local-only.
+    admin_username = os.environ.get('ADMIN_USERNAME', 'admin')
+    admin_password = os.environ.get('ADMIN_PASSWORD')
+    if admin_password:
+        admin_hash = hash_password(admin_password)
+        c.execute("INSERT OR REPLACE INTO admins (id, username, password_hash) VALUES ((SELECT id FROM admins WHERE username = ?), ?, ?)",
+                  (admin_username, admin_username, admin_hash))
+    elif not IS_PRODUCTION:
+        admin_hash = hash_password('admin123')
+        c.execute("INSERT OR IGNORE INTO admins (username, password_hash) VALUES (?, ?)",
+                  ('admin', admin_hash))
     
     # Create default event
     c.execute("INSERT OR IGNORE INTO events (id, name, date, status) VALUES (?, ?, ?, ?)",
@@ -98,14 +196,14 @@ init_db()
 
 # --- Helper Functions ---
 def generate_record_number():
-    """Generate GL-2026-000247 style ID"""
+    """Generate RL-2026-000247 style ID"""
     conn = sqlite3.connect(app.config['DATABASE'])
     c = conn.cursor()
     c.execute("SELECT COUNT(*) FROM participants")
     count = c.fetchone()[0]
     conn.close()
     year = datetime.now().year
-    return f"GL-{year}-{str(count + 1).zfill(6)}"
+    return f"RL-{year}-{str(count + 1).zfill(6)}"
 
 def generate_event_id():
     """Generate EVENT-2026-001 style ID"""
@@ -119,13 +217,22 @@ def generate_event_id():
 
 def process_image(file):
     """Save and compress image"""
-    filename = secure_filename(f"{uuid.uuid4()}_{file.filename}")
+    extension = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else ''
+    if extension not in ALLOWED_IMAGE_EXTENSIONS:
+        raise ValueError('Unsupported image type')
+
+    filename = secure_filename(f"{uuid.uuid4()}.jpg")
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     
     # Open and compress image
     img = Image.open(file)
+    img.verify()
+    file.seek(0)
+    img = Image.open(file)
     img.thumbnail((1024, 1024))
-    img.save(filepath, optimize=True, quality=85)
+    if img.mode not in ('RGB', 'L'):
+        img = img.convert('RGB')
+    img.save(filepath, format='JPEG', optimize=True, quality=85)
     
     return filename
 
@@ -206,11 +313,11 @@ def submit_planting():
     """Handle participant registration"""
     try:
         # Get form data
-        full_name = request.form.get('full_name')
-        role = request.form.get('role')
-        tree_species = request.form.get('tree_species')
+        full_name = (request.form.get('full_name') or '').strip()
+        role = (request.form.get('role') or '').strip()
+        tree_species = (request.form.get('tree_species') or '').strip()
         quantity = int(request.form.get('quantity', 1))
-        planting_zone = request.form.get('planting_zone')
+        planting_zone = (request.form.get('planting_zone') or '').strip()
         latitude = request.form.get('lat')
         longitude = request.form.get('lng')
         location_accuracy = request.form.get('accuracy')
@@ -221,8 +328,13 @@ def submit_planting():
         # Validation
         if not all([full_name, role, tree_species, planting_zone, photo]) or not photo.filename:
             return render_template('index.html', error="All fields are required")
+        photo_extension = photo.filename.rsplit('.', 1)[-1].lower() if '.' in photo.filename else ''
+        if photo_extension not in ALLOWED_IMAGE_EXTENSIONS:
+            return render_template('index.html', error="Please upload a JPG, PNG, or WebP image.")
         if quantity <= 0:
             return render_template('index.html', error="Quantity must be greater than zero")
+        if quantity > 1000:
+            return render_template('index.html', error="Quantity must be 1000 or less")
 
         exif_location = extract_exif_gps(photo)
         final_lat, final_lng, final_accuracy, location_source = resolve_location(
@@ -464,8 +576,14 @@ def verify_participant(participant_id):
     """Verify a participant's planting record"""
     payload = request.get_json(silent=True) or {}
     status = payload.get('status', 'Verified')
+    if status not in {'Pending', 'Verified', 'Rejected'}:
+        return jsonify({'success': False, 'error': 'Invalid status'}), 400
     rejection_scope = payload.get('rejection_scope') if status == 'Rejected' else None
+    if rejection_scope not in {None, 'photo', 'details', 'all'}:
+        return jsonify({'success': False, 'error': 'Invalid rejection scope'}), 400
     rejection_note = payload.get('rejection_note') if status == 'Rejected' else None
+    if rejection_note:
+        rejection_note = str(rejection_note).strip()[:500]
     
     conn = get_db_connection()
     c = conn.cursor()
@@ -507,24 +625,33 @@ def pin_participant(participant_id):
 def admin_login():
     """Admin login page"""
     if request.method == 'POST':
+        if session.get('login_attempts', 0) >= 8:
+            flash('Too many failed attempts. Clear the session or try again later.', 'error')
+            return render_template('admin_login.html'), 429
+
         username = request.form.get('username')
         password = request.form.get('password')
-        
-        password_hash = hashlib.sha256(password.encode()).hexdigest()
+        if not username or not password:
+            flash('Invalid credentials', 'error')
+            return render_template('admin_login.html')
         
         conn = get_db_connection()
         c = conn.cursor()
-        c.execute("SELECT * FROM admins WHERE username = ? AND password_hash = ?", 
-                  (username, password_hash))
+        c.execute("SELECT * FROM admins WHERE username = ?", (username,))
         admin = c.fetchone()
-        conn.close()
         
-        if admin:
+        if admin and verify_password(password, admin['password_hash']):
+            if not str(admin['password_hash']).startswith('pbkdf2_sha256$'):
+                c.execute("UPDATE admins SET password_hash = ? WHERE id = ?", (hash_password(password), admin['id']))
+                conn.commit()
+            conn.close()
+            session.clear()
             session['admin_logged_in'] = True
             session['admin_username'] = username
             return redirect(url_for('operations_hub'))
-        else:
-            flash('Invalid credentials', 'error')
+        conn.close()
+        session['login_attempts'] = session.get('login_attempts', 0) + 1
+        flash('Invalid credentials', 'error')
     
     return render_template('admin_login.html')
 
@@ -559,7 +686,7 @@ def export_data():
             BytesIO(output.getvalue().encode()),
             mimetype='text/csv',
             as_attachment=True,
-            download_name=f'greenledger_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
+            download_name=f'rootledger_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
         )
     
     elif format == 'json':
@@ -568,7 +695,7 @@ def export_data():
             BytesIO(json.dumps(data, indent=2).encode()),
             mimetype='application/json',
             as_attachment=True,
-            download_name=f'greenledger_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
+            download_name=f'rootledger_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
         )
     
     elif format == 'zip':
@@ -601,7 +728,7 @@ def export_data():
             zip_buffer,
             mimetype='application/zip',
             as_attachment=True,
-            download_name=f'greenledger_backup_{datetime.now().strftime("%Y%m%d_%H%M%S")}.zip'
+            download_name=f'rootledger_backup_{datetime.now().strftime("%Y%m%d_%H%M%S")}.zip'
         )
 
 @app.route('/backup/create', methods=['POST'])
@@ -669,7 +796,7 @@ def update_event_stats():
 @socketio.on('connect')
 def handle_connect():
     """Handle client connection"""
-    emit('connected', {'message': 'Connected to GreenLedger server'})
+    emit('connected', {'message': f'Connected to {APP_NAME} server'})
 
 @socketio.on('disconnect')
 def handle_disconnect():

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}GreenLedger - Environmental Event Registration{% endblock %}
+{% block title %}RootLedger - Environmental Event Registration{% endblock %}
 
 {% block content %}
 <main class="app-shell">
@@ -11,7 +11,7 @@
                 <header class="portal-head">
                     <div class="brand">
                         <span class="brand-mark"><i class="fa-solid fa-seedling"></i></span>
-                        <span>GreenLedger</span>
+                        <span>RootLedger</span>
                     </div>
                     <p>Environmental Event Registration</p>
                 </header>
@@ -24,6 +24,7 @@
                     {% endif %}
 
                     <form id="plantForm" action="/submit" method="POST" enctype="multipart/form-data" class="portal-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <div class="field">
                             <label for="full_name">Full Name</label>
                             <input id="full_name" type="text" name="full_name" required autocomplete="name">
@@ -163,7 +164,7 @@
         <aside class="portal-side">
             <div class="brand">
                 <span class="brand-mark"><i class="fa-solid fa-leaf"></i></span>
-                <span>GreenLedger</span>
+                <span>RootLedger</span>
             </div>
             <h2>Mazingira Day 2026</h2>
             <p>A fast, real-time registration portal for verified campus tree planting records, live environmental impact, and event operations.</p>
