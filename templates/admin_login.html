@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Login - GreenLedger{% endblock %}
+
+{% block content %}
+<main class="login-page">
+    <section class="login-card">
+        <div class="brand">
+            <span class="brand-mark"><i class="fa-solid fa-leaf"></i></span>
+            <span>GreenLedger</span>
+        </div>
+        <h1>Operations Hub</h1>
+        <p style="color: var(--muted); margin-top: -4px;">Authorized event organizers only.</p>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="flash-message">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <form method="POST" class="portal-form">
+            <div class="field">
+                <label for="username">Username</label>
+                <input id="username" name="username" type="text" autocomplete="username" required>
+            </div>
+            <div class="field">
+                <label for="password">Password</label>
+                <input id="password" name="password" type="password" autocomplete="current-password" required>
+            </div>
+            <button class="btn btn-primary" type="submit">
+                <i class="fa-solid fa-lock"></i>
+                Sign In
+            </button>
+        </form>
+    </section>
+</main>
+{% endblock %}

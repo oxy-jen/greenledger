@@ -1,0 +1,349 @@
+{% extends "base.html" %}
+
+{% block title %}GreenLedger - Environmental Event Registration{% endblock %}
+
+{% block content %}
+<main class="app-shell">
+    <div class="portal-wrap">
+        <section class="phone-frame" aria-label="Participant mobile app">
+            <div class="phone-notch"></div>
+            <div class="phone-screen">
+                <header class="portal-head">
+                    <div class="brand">
+                        <span class="brand-mark"><i class="fa-solid fa-seedling"></i></span>
+                        <span>GreenLedger</span>
+                    </div>
+                    <p>Environmental Event Registration</p>
+                </header>
+
+                <div class="portal-card">
+                    <h1>Tree Planting Form</h1>
+
+                    {% if error %}
+                    <div class="flash-message">{{ error }}</div>
+                    {% endif %}
+
+                    <form id="plantForm" action="/submit" method="POST" enctype="multipart/form-data" class="portal-form">
+                        <div class="field">
+                            <label for="full_name">Full Name</label>
+                            <input id="full_name" type="text" name="full_name" required autocomplete="name">
+                        </div>
+
+                        <div class="field">
+                            <label for="role">Role / Department</label>
+                            <select id="role" name="role" required>
+                                <option value="">Select Role / Department</option>
+                                <option value="ICT Student">ICT Student</option>
+                                <option value="Engineering Student">Engineering Student</option>
+                                <option value="Science Student">Science Student</option>
+                                <option value="Agriculture Student">Agriculture Student</option>
+                                <option value="Business Student">Business Student</option>
+                                <option value="Lecturer">Lecturer</option>
+                                <option value="Trainer">Trainer</option>
+                                <option value="Head of Department">Head of Department</option>
+                                <option value="Dean">Dean</option>
+                                <option value="Deputy Principal">Deputy Principal</option>
+                                <option value="Principal">Principal</option>
+                                <option value="Administration">Administration</option>
+                                <option value="Government Official">Government Official</option>
+                                <option value="Environmental Officer">Environmental Officer</option>
+                                <option value="Guest">Guest</option>
+                                <option value="Visitor">Visitor</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+
+                        <div class="field">
+                            <label for="tree_species">Tree Species</label>
+                            <select id="tree_species" name="tree_species" required>
+                                <option value="">Tree Species</option>
+                                <option value="Moringa">Moringa</option>
+                                <option value="Jacaranda">Jacaranda</option>
+                                <option value="Acacia">Acacia</option>
+                                <option value="Baobab">Baobab</option>
+                                <option value="Neem">Neem</option>
+                                <option value="Eucalyptus">Eucalyptus</option>
+                                <option value="Oak">Oak</option>
+                                <option value="Maple">Maple</option>
+                                <option value="Pine">Pine</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+
+                        <div class="field">
+                            <label for="quantity">Quantity of Trees</label>
+                            <input id="quantity" type="number" name="quantity" value="1" min="1" max="1000" required>
+                        </div>
+
+                        <div class="field">
+                            <label for="planting_zone">Planting Zone</label>
+                            <select id="planting_zone" name="planting_zone" required>
+                                <option value="">Select Planting Zone</option>
+                                <option value="Main Gate">Main Gate</option>
+                                <option value="Administration Block">Administration Block</option>
+                                <option value="ICT Block">ICT Block</option>
+                                <option value="Engineering Area">Engineering Area</option>
+                                <option value="Science Area">Science Area</option>
+                                <option value="Agriculture Farm">Agriculture Farm</option>
+                                <option value="Library Grounds">Library Grounds</option>
+                                <option value="Sports Field">Sports Field</option>
+                                <option value="Hostels">Hostels</option>
+                                <option value="Parking Area">Parking Area</option>
+                                <option value="Staff Quarters">Staff Quarters</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+
+                        <div class="field">
+                            <label for="photo">Planting Photo Evidence</label>
+                            <div class="capture-tabs" role="group" aria-label="Photo source">
+                                <button type="button" class="capture-tab active" id="cameraMode">
+                                    <i class="fa-solid fa-camera"></i>
+                                    Take Photo
+                                </button>
+                                <button type="button" class="capture-tab" id="uploadMode">
+                                    <i class="fa-solid fa-upload"></i>
+                                    Upload
+                                </button>
+                            </div>
+                            <div class="photo-drop">
+                                <div class="camera-panel" id="cameraPanel">
+                                    <video id="cameraPreview" playsinline autoplay muted></video>
+                                    <canvas id="cameraCanvas" hidden></canvas>
+                                    <div class="camera-actions">
+                                        <button type="button" class="btn btn-secondary btn-sm" id="startCamera">
+                                            <i class="fa-solid fa-video"></i>
+                                            Open Camera
+                                        </button>
+                                        <button type="button" class="btn btn-primary btn-sm" id="capturePhoto" disabled>
+                                            <i class="fa-solid fa-camera"></i>
+                                            Take Photo
+                                        </button>
+                                    </div>
+                                </div>
+                                <input id="photo" type="file" name="photo" accept="image/*" capture="environment" required>
+                                <div class="photo-preview" id="photoPreview">
+                                    <i class="fa-solid fa-camera"></i>
+                                    <span>Camera opens when you choose a photo</span>
+                                </div>
+                            </div>
+                            <div class="upload-warning" id="uploadWarning" hidden>
+                                <i class="fa-solid fa-triangle-exclamation"></i>
+                                <span>Only upload if the camera fails. Admin will review the image, so send the real planting photo.</span>
+                            </div>
+                        </div>
+
+                        <div class="geo-state" id="geoState">
+                            <i class="fa-solid fa-location-crosshairs"></i>
+                            <span>Capturing location automatically</span>
+                        </div>
+
+                        <input type="hidden" id="lat" name="lat">
+                        <input type="hidden" id="lng" name="lng">
+                        <input type="hidden" id="accuracy" name="accuracy">
+                        <input type="hidden" id="browser_data" name="browser_data">
+                        <input type="hidden" id="photo_source" name="photo_source" value="camera">
+
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fa-solid fa-circle-check"></i>
+                            Submit Planting Record
+                        </button>
+                    </form>
+                </div>
+
+                <div class="portal-card">
+                    <div class="impact-strip">
+                        <i class="fa-solid fa-cloud"></i>
+                        <span>Estimated Annual CO2 Absorption updates after submission</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <aside class="portal-side">
+            <div class="brand">
+                <span class="brand-mark"><i class="fa-solid fa-leaf"></i></span>
+                <span>GreenLedger</span>
+            </div>
+            <h2>Mazingira Day 2026</h2>
+            <p>A fast, real-time registration portal for verified campus tree planting records, live environmental impact, and event operations.</p>
+
+            <div class="preview-grid">
+                <div class="preview-tile">
+                    <i class="fa-solid fa-tree"></i>
+                    <strong id="liveTrees">0</strong>
+                    <span>Live Trees</span>
+                </div>
+                <div class="preview-tile">
+                    <i class="fa-solid fa-cloud"></i>
+                    <strong id="liveCO2">0 kg</strong>
+                    <span>CO2 Saved</span>
+                </div>
+                <div class="preview-tile">
+                    <i class="fa-solid fa-users"></i>
+                    <strong id="liveParticipants">0</strong>
+                    <span>Participants</span>
+                </div>
+            </div>
+        </aside>
+    </div>
+</main>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const geoState = document.getElementById('geoState');
+const photoInput = document.getElementById('photo');
+const photoPreview = document.getElementById('photoPreview');
+const cameraMode = document.getElementById('cameraMode');
+const uploadMode = document.getElementById('uploadMode');
+const uploadWarning = document.getElementById('uploadWarning');
+const photoSource = document.getElementById('photo_source');
+const plantForm = document.getElementById('plantForm');
+const cameraPanel = document.getElementById('cameraPanel');
+const cameraPreview = document.getElementById('cameraPreview');
+const cameraCanvas = document.getElementById('cameraCanvas');
+const startCamera = document.getElementById('startCamera');
+const capturePhoto = document.getElementById('capturePhoto');
+let cameraStream = null;
+
+document.getElementById('browser_data').value = JSON.stringify({
+    userAgent: navigator.userAgent,
+    language: navigator.language,
+    platform: navigator.platform,
+    capturedAt: new Date().toISOString()
+});
+
+function setPhotoMode(mode) {
+    const camera = mode === 'camera';
+    photoSource.value = mode;
+    cameraMode.classList.toggle('active', camera);
+    uploadMode.classList.toggle('active', !camera);
+    uploadWarning.hidden = camera;
+    cameraPanel.hidden = !camera;
+    if (camera) {
+        photoInput.setAttribute('capture', 'environment');
+        photoPreview.innerHTML = '<i class="fa-solid fa-camera"></i><span>Camera opens when you choose a photo</span>';
+    } else {
+        photoInput.removeAttribute('capture');
+        photoPreview.innerHTML = '<i class="fa-solid fa-upload"></i><span>Choose the real planting photo for admin review</span>';
+        stopCamera();
+    }
+    photoInput.value = '';
+}
+
+cameraMode.addEventListener('click', () => setPhotoMode('camera'));
+uploadMode.addEventListener('click', () => setPhotoMode('upload'));
+
+startCamera.addEventListener('click', async () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        photoPreview.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i><span>Camera stream is unavailable. Use the file chooser or Upload fallback.</span>';
+        return;
+    }
+
+    try {
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: 'environment' } },
+            audio: false
+        });
+        cameraPreview.srcObject = cameraStream;
+        cameraPanel.classList.add('active');
+        capturePhoto.disabled = false;
+        photoPreview.innerHTML = '<i class="fa-solid fa-camera"></i><span>Camera ready. Take the real planting photo.</span>';
+    } catch (error) {
+        photoPreview.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i><span>Camera failed. Switch to Upload and admin will review the real planting photo.</span>';
+    }
+});
+
+capturePhoto.addEventListener('click', () => {
+    if (!cameraPreview.videoWidth || !cameraPreview.videoHeight) return;
+    cameraCanvas.width = cameraPreview.videoWidth;
+    cameraCanvas.height = cameraPreview.videoHeight;
+    cameraCanvas.getContext('2d').drawImage(cameraPreview, 0, 0);
+    cameraCanvas.toBlob(blob => {
+        if (!blob) return;
+        const file = new File([blob], `planting-${Date.now()}.jpg`, { type: 'image/jpeg' });
+        const transfer = new DataTransfer();
+        transfer.items.add(file);
+        photoInput.files = transfer.files;
+        photoPreview.innerHTML = `<img src="${URL.createObjectURL(file)}" alt="Captured planting evidence">`;
+        requestPlantingLocation();
+        stopCamera();
+    }, 'image/jpeg', 0.9);
+});
+
+function stopCamera() {
+    if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+        cameraStream = null;
+    }
+    cameraPreview.srcObject = null;
+    capturePhoto.disabled = true;
+    cameraPanel.classList.remove('active');
+}
+
+photoInput.addEventListener('change', function() {
+    const file = this.files && this.files[0];
+    if (!file) return;
+    requestPlantingLocation();
+    const reader = new FileReader();
+    reader.onload = event => {
+        photoPreview.innerHTML = `<img src="${event.target.result}" alt="Selected planting evidence">`;
+    };
+    reader.readAsDataURL(file);
+});
+
+function requestPlantingLocation() {
+    if (!navigator.geolocation) {
+        geoState.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i><span>Location is required but this browser does not support it.</span>';
+        geoState.classList.add('geo-warning');
+        return;
+    }
+
+    geoState.classList.remove('geo-warning');
+    geoState.innerHTML = '<i class="fa-solid fa-location-crosshairs"></i><span>Capturing real planting location at Mathenge TTI</span>';
+    navigator.geolocation.getCurrentPosition(
+        function(position) {
+            document.getElementById('lat').value = position.coords.latitude;
+            document.getElementById('lng').value = position.coords.longitude;
+            document.getElementById('accuracy').value = position.coords.accuracy || '';
+            geoState.innerHTML = `<i class="fa-solid fa-circle-check"></i><span>Location captured within ${Math.round(position.coords.accuracy || 0)}m</span>`;
+        },
+        function() {
+            geoState.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i><span>Location is required. Allow location access before submitting.</span>';
+            geoState.classList.add('geo-warning');
+        },
+        { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+    );
+}
+
+requestPlantingLocation();
+
+plantForm.addEventListener('submit', function(event) {
+    if (!document.getElementById('lat').value || !document.getElementById('lng').value) {
+        event.preventDefault();
+        geoState.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i><span>Please allow location access so the planted tree is mapped correctly.</span>';
+        geoState.classList.add('geo-warning');
+        return;
+    }
+    if (!photoInput.files || !photoInput.files.length) {
+        event.preventDefault();
+        photoPreview.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i><span>Please take or choose the real planting photo before submitting.</span>';
+    }
+});
+
+function updateStats() {
+    fetch('/api/stats')
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('liveTrees').textContent = data.trees.toLocaleString();
+            document.getElementById('liveCO2').textContent = `${Math.round(data.co2).toLocaleString()} kg`;
+            document.getElementById('liveParticipants').textContent = data.participants.toLocaleString();
+        })
+        .catch(() => {});
+}
+
+updateStats();
+setInterval(updateStats, 5000);
+</script>
+{% endblock %}

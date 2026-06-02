@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}GreenLedger - Live Event Display {% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+{% endblock %}
+
+{% block content %}
+<main class="tv-page">
+    <section class="tv-frame">
+        <header class="tv-header">
+            <div class="brand">
+                <span class="brand-mark"><i class="fa-solid fa-leaf"></i></span>
+                <span>GreenLedger</span>
+            </div>
+            <div class="tv-divider"></div>
+            <strong>Mathenge TTI Mazingira Day 2026</strong>
+            <div class="tv-divider"></div>
+            <span>Live Event Display</span>
+            <time id="liveClock" class="tv-clock">--:--:--</time>
+            <button id="displayThemeToggle" class="theme-toggle" type="button" title="Toggle green display mode">
+                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                <span>Green Mode</span>
+            </button>
+            <div class="tv-avatar"><i class="fa-solid fa-user-tie"></i></div>
+        </header>
+
+        <section class="tv-grid">
+            <aside class="tv-left">
+                <article class="tv-card hero-stat">
+                    <i class="fa-solid fa-tree"></i>
+                    <strong id="treeCounter">0</strong>
+                    <span>Live Trees</span>
+                </article>
+
+                <article class="tv-card impact-stat">
+                    <i class="fa-solid fa-cloud"></i>
+                    <div>
+                        <strong id="co2Counter">0 kg CO2</strong>
+                        <span>Environmental Impact</span>
+                    </div>
+                </article>
+
+                <article class="tv-card mini-weather">
+                    <h2>Live Weather</h2>
+                    <div id="weatherDisplay"><i class="fa-solid fa-cloud-sun"></i> --</div>
+                </article>
+
+                <article class="tv-card mini-participants">
+                    <h2>Live Participants</h2>
+                    <strong id="participantCounter">0</strong>
+                    <span>participant: <b id="participantSessionCount">0</b></span>
+                </article>
+            </aside>
+
+            <section class="tv-center">
+                <article class="map-forest-card">
+                    <div class="map-title-chip">
+                        <i class="fa-solid fa-circle"></i>
+                        <strong>Live Planting Map</strong>
+                    </div>
+                    <div class="map-location-chip">
+                        <i class="fa-solid fa-location-dot"></i>
+                        <span>Mathenge TTI, Othaya</span>
+                    </div>
+                    <div id="liveMap"></div>
+                    <div class="map-legend-chip">
+                        <span><b class="legend-dot moringa"></b>Moringa</span>
+                        <span><b class="legend-dot jacaranda"></b>Jacaranda</span>
+                        <span><b class="legend-dot acacia"></b>Acacia</span>
+                        <span><b class="legend-dot other"></b>Other</span>
+                    </div>
+                </article>
+
+                <article class="tv-card moments-card">
+                    <div class="tv-card-head">
+                        <h2>Planting Moments</h2>
+                        <span>Live</span>
+                    </div>
+                    <div id="photoGallery" class="moments-grid"></div>
+                </article>
+            </section>
+
+            <aside class="tv-right">
+                <article class="tv-card feed-card">
+                    <h2>Live Activity Feed</h2>
+                    <div id="liveFeed" class="tv-feed">
+                        <div class="empty-state">Waiting for participant submissions.</div>
+                    </div>
+                </article>
+
+                <article class="tv-card competition-card">
+                    <h2>Department Competition</h2>
+                    <div id="departmentLeaderboard" class="tv-leaderboard"></div>
+                </article>
+            </aside>
+        </section>
+    </section>
+</main>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+<script src="{{ url_for('static', filename='js/display.js') }}"></script>
+{% endblock %}

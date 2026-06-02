@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}{{ participant.record_number }} - GreenLedger{% endblock %}
+
+{% block content %}
+<main class="success-page">
+    <article class="record-card">
+        <header class="record-head">
+            <span class="brand-mark"><i class="fa-solid fa-seedling"></i></span>
+            <h1>GreenLedger Planting Card</h1>
+            <p>Mazingira Day 2026</p>
+        </header>
+
+        <section class="record-body">
+            <div class="record-grid">
+                <div class="record-row"><span>Record Number</span><strong>{{ participant.record_number }}</strong></div>
+                <div class="record-row"><span>Name</span><strong>{{ participant.full_name }}</strong></div>
+                <div class="record-row"><span>Role</span><strong>{{ participant.role }}</strong></div>
+                <div class="record-row"><span>Species</span><strong>{{ participant.tree_species }}</strong></div>
+                <div class="record-row"><span>Quantity</span><strong>{{ participant.quantity }}</strong></div>
+                <div class="record-row"><span>Planting Zone</span><strong>{{ participant.planting_zone }}</strong></div>
+                <div class="record-row">
+                    <span>GPS Location</span>
+                    <strong>
+                        {% if participant.latitude is not none and participant.longitude is not none %}
+                            {{ "%.5f"|format(participant.latitude) }}, {{ "%.5f"|format(participant.longitude) }}
+                        {% else %}
+                            Pending
+                        {% endif %}
+                    </strong>
+                </div>
+                <div class="record-row"><span>Location Source</span><strong>{{ participant.location_source|default("browser", true)|title }}</strong></div>
+                <div class="record-row"><span>Timestamp</span><strong>{{ participant.timestamp }}</strong></div>
+                <div class="record-row"><span>Impact</span><strong>{{ participant.co2_saved_kg|round|int }} kg CO2</strong></div>
+                <div class="record-row">
+                    <span>Status</span>
+                    <strong><span class="status-badge status-{{ participant.status.lower() }}"><i class="fa-solid fa-shield-halved"></i> {{ participant.status }}</span></strong>
+                </div>
+            </div>
+
+            {% if participant.photo_path %}
+            <img class="record-photo" src="{{ url_for('static', filename=participant.photo_path) }}" alt="Planting evidence">
+            {% endif %}
+
+            <div class="actions-row no-print">
+                <button class="btn btn-secondary" onclick="window.print()">
+                    <i class="fa-solid fa-print"></i>
+                    Print
+                </button>
+                <button class="btn btn-secondary" onclick="navigator.clipboard.writeText(window.location.href); showToast('Record link copied')">
+                    <i class="fa-solid fa-link"></i>
+                    Copy Link
+                </button>
+                <a class="btn btn-primary" href="/">
+                    <i class="fa-solid fa-seedling"></i>
+                    New Record
+                </a>
+            </div>
+        </section>
+    </article>
+</main>
+{% endblock %}

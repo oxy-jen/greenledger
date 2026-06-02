@@ -1,3 +1,17 @@
+venv/
+__pycache__/
+*.pyc
+.env
+
+instance/database.db
+
+static/uploads/*
+!static/uploads/.gitkeep
+
+backups/
+*.zip
+
+*.db
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

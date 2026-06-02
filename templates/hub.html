@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}Operations Hub - GreenLedger{% endblock %}
+
+{% block content %}
+<main class="hub-layout">
+    <aside class="hub-side">
+        <div class="brand">
+            <span class="brand-mark"><i class="fa-solid fa-leaf"></i></span>
+            <span>GreenLedger</span>
+        </div>
+        <nav class="hub-nav" aria-label="Operations navigation">
+            <a class="active" href="#dashboard"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
+            <a href="#records"><i class="fa-solid fa-list-check"></i> Verification</a>
+            <a href="#reports"><i class="fa-solid fa-chart-simple"></i> Reports</a>
+            <a href="/display" target="_blank"><i class="fa-solid fa-display"></i> Live Display</a>
+            <a href="/admin/logout"><i class="fa-solid fa-arrow-right-from-bracket"></i> Logout</a>
+        </nav>
+    </aside>
+
+    <section class="hub-main">
+        <header class="hub-top">
+            <div>
+                <h1>Operations Hub</h1>
+                <p>Mazingira Day 2026 event command center</p>
+            </div>
+            <div class="actions-row" style="width: auto;">
+                <a class="btn btn-secondary" href="/export?format=zip"><i class="fa-solid fa-box-archive"></i> Export Package</a>
+                <button id="createBackup" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Backup</button>
+            </div>
+        </header>
+
+        <section class="metric-grid" id="dashboard">
+            <div class="metric-card">
+                <span>Total Trees <i class="fa-solid fa-tree"></i></span>
+                <strong id="totalTrees">{{ total_trees }}</strong>
+            </div>
+            <div class="metric-card">
+                <span>Participants <i class="fa-solid fa-users"></i></span>
+                <strong id="totalParticipants">{{ total_participants }}</strong>
+            </div>
+            <div class="metric-card">
+                <span>CO2 Saved <i class="fa-solid fa-cloud"></i></span>
+                <strong id="totalCO2">{{ total_co2|round|int }} kg</strong>
+            </div>
+            <div class="metric-card">
+                <span>Pending <i class="fa-solid fa-shield-halved"></i></span>
+                <strong id="pendingVerification">{{ pending }}</strong>
+            </div>
+        </section>
+
+        <section class="hub-grid">
+            <article class="hub-card" id="records">
+                <div class="hub-card-head">
+                    <h2>Participant Records</h2>
+                    <input class="search-box" id="participantSearch" type="search" placeholder="Search records">
+                </div>
+                <div class="actions-row" style="margin-bottom: 12px;">
+                    <button class="btn btn-secondary btn-sm filter-btn active" data-filter="all">All</button>
+                    <button class="btn btn-secondary btn-sm filter-btn" data-filter="Pending">Pending</button>
+                    <button class="btn btn-secondary btn-sm filter-btn" data-filter="Verified">Verified</button>
+                    <button class="btn btn-secondary btn-sm filter-btn" data-filter="Rejected">Rejected</button>
+                </div>
+                <div id="participantList" class="participant-list">
+                    {% if recent %}
+                        {% for participant in recent %}
+                        <div class="participant-item {% if participant.is_vip %}vip{% endif %}">
+                            <div class="participant-info">
+                                <img class="participant-photo" src="{{ url_for('static', filename=participant.photo_path) }}" alt="{{ participant.full_name }}">
+                                <div>
+                                    <div class="participant-name">{{ participant.full_name }}</div>
+                                    <div class="participant-meta">{{ participant.role }} | {{ participant.quantity }} x {{ participant.tree_species }} | {{ participant.planting_zone }}</div>
+                                    <div class="participant-time">{{ participant.record_number }}</div>
+                                </div>
+                            </div>
+                            <div class="participant-actions">
+                                <span class="status-badge status-{{ participant.status.lower() }}">{{ participant.status }}</span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="empty-state">No participant records yet.</div>
+                    {% endif %}
+                </div>
+            </article>
+
+            <aside class="hub-card" id="reports">
+                <div class="hub-card-head">
+                    <h2>Department Competition</h2>
+                    <i class="fa-solid fa-ranking-star"></i>
+                </div>
+                <div id="departmentLeaderboard">
+                    {% if dept_stats %}
+                        {% for dept in dept_stats %}
+                        <div class="leader-row">
+                            <strong>{{ loop.index }}</strong>
+                            <span class="leader-name">{{ dept.role }}</span>
+                            <span class="leader-count">{{ dept.total }}</span>
+                            <div class="bar"><span style="width: 100%;"></span></div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="empty-state">Rankings appear after submissions.</div>
+                    {% endif %}
+                </div>
+
+                <div class="hub-card-head" style="margin-top: 18px;">
+                    <h2>Export Center</h2>
+                    <i class="fa-solid fa-download"></i>
+                </div>
+                <div class="export-grid">
+                    <a class="btn btn-secondary" href="/export?format=csv"><i class="fa-solid fa-file-csv"></i> CSV</a>
+                    <a class="btn btn-secondary" href="/export?format=json"><i class="fa-solid fa-code"></i> JSON</a>
+                    <a class="btn btn-secondary" href="/export?format=zip"><i class="fa-solid fa-file-zipper"></i> ZIP</a>
+                </div>
+            </aside>
+        </section>
+    </section>
+</main>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="{{ url_for('static', filename='js/hub.js') }}"></script>
+{% endblock %}
