@@ -1,4 +1,4 @@
-// Operations Hub JavaScript - RootLedger Admin Panel
+// Operations Hub JavaScript - Green Ledger Admin Panel
 
 // Global state
 let hubState = {

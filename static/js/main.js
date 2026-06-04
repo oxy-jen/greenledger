@@ -1,4 +1,4 @@
-// Main JavaScript for RootLedger
+// Main JavaScript for Green Ledger
 
 // Utility functions
 function formatNumber(num) {

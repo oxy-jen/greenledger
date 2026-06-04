@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 
-{% block title %}RootLedger - Choose Action{% endblock %}
+{% block title %}Green Ledger - Choose Action{% endblock %}
 
 {% block content %}
 <main class="choice-page">
-    <section class="choice-shell" aria-label="RootLedger action chooser">
+    <section class="choice-shell" aria-label="Green Ledger action chooser">
         <header class="choice-head">
             <div class="brand">
                 <span class="brand-mark"><i class="fa-solid fa-seedling"></i></span>
-                <span>RootLedger</span>
+                <span>Green Ledger</span>
             </div>
             <span>Mazingira Day 2026</span>
         </header>
@@ -16,7 +16,7 @@
         <section class="choice-hero">
             <div>
                 <h1>What would you like to do?</h1>
-                <p>Plant a new tree, volunteer to care for one, or open the live display.</p>
+                <p>Plant a new tree or volunteer to care for one.</p>
             </div>
         </section>
 
@@ -34,18 +34,7 @@
                 <small>Find planted trees near you and offer support.</small>
                 <b>Find Trees <i class="fa-solid fa-arrow-right"></i></b>
             </a>
-
-            <a class="choice-card display" href="{{ url_for('live_display') }}" target="_blank">
-                <span class="choice-icon"><i class="fa-solid fa-display"></i></span>
-                <strong>Live Display</strong>
-                <small>View event totals, map, feed, and moments.</small>
-                <b>Open Display <i class="fa-solid fa-arrow-right"></i></b>
-            </a>
         </section>
-
-        <footer class="choice-footer">
-            <a href="{{ url_for('admin_login') }}"><i class="fa-solid fa-lock"></i> Admin</a>
-        </footer>
     </section>
 </main>
 {% endblock %}

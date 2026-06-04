@@ -25,7 +25,7 @@ from io import BytesIO, StringIO
 
 app = Flask(__name__)
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-APP_NAME = 'RootLedger'
+APP_NAME = 'Green Ledger'
 ASSET_VERSION = datetime.utcnow().strftime('%Y%m%d%H%M%S')
 RENDER_EXTERNAL_URL = os.environ.get('RENDER_EXTERNAL_URL', '')
 DEFAULT_PRIMARY_HOST = urlparse(RENDER_EXTERNAL_URL).netloc or 'rootledger-osaw.onrender.com'
@@ -1389,7 +1389,7 @@ def geocode_location():
     seen = set()
 
     for place in local_place_matches(query):
-        add_geocode_result(results, seen, place['name'], place['lat'], place['lng'], 'RootLedger local index', 2)
+        add_geocode_result(results, seen, place['name'], place['lat'], place['lng'], 'Green Ledger local index', 2)
 
     for url in nominatim_searches(query):
         try:
@@ -2042,7 +2042,7 @@ def export_data():
             BytesIO(output.getvalue().encode()),
             mimetype='text/csv',
             as_attachment=True,
-            download_name=f'rootledger_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
+            download_name=f'greenledger_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
         )
     
     elif format == 'json':
@@ -2055,7 +2055,7 @@ def export_data():
             BytesIO(json.dumps(data, indent=2).encode()),
             mimetype='application/json',
             as_attachment=True,
-            download_name=f'rootledger_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
+            download_name=f'greenledger_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
         )
     
     elif format == 'zip':
@@ -2094,7 +2094,7 @@ def export_data():
             zip_buffer,
             mimetype='application/zip',
             as_attachment=True,
-            download_name=f'rootledger_backup_{datetime.now().strftime("%Y%m%d_%H%M%S")}.zip'
+            download_name=f'greenledger_backup_{datetime.now().strftime("%Y%m%d_%H%M%S")}.zip'
         )
 
 @app.route('/backup/create', methods=['POST'])
