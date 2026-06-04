@@ -16,6 +16,7 @@ let hubState = {
 };
 
 const PHOTO_PLACEHOLDER = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22240%22 height=%22160%22 viewBox=%220 0 240 160%22%3E%3Crect width=%22240%22 height=%22160%22 fill=%22%23eef5ee%22/%3E%3Ccircle cx=%22120%22 cy=%2272%22 r=%2228%22 fill=%22%2384c98d%22/%3E%3Cpath d=%22M120 76v40%22 stroke=%22%231f6b45%22 stroke-width=%228%22 stroke-linecap=%22round%22/%3E%3C/svg%3E';
+const adminLocationPickers = new Map();
 
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', function() {
@@ -84,6 +85,13 @@ function setupEventListeners() {
         adminForm.addEventListener('submit', submitAdminParticipant);
         const photoInput = adminForm.querySelector('input[name="photos"]');
         if (photoInput) photoInput.addEventListener('change', () => renderAdminPhotoPreview(photoInput.files));
+        setupAdminLocationPicker({
+            form: adminForm,
+            searchInput: document.getElementById('adminLocationSearch'),
+            resultsEl: document.getElementById('adminLocationResults'),
+            clearButton: document.getElementById('adminClearLocation'),
+            mapEl: document.getElementById('adminLocationMap')
+        });
     }
 
     const importForm = document.getElementById('participantImportForm');
@@ -524,9 +532,184 @@ function renderAdminPhotoPreview(files) {
     `).join('');
 }
 
+function locationButtonHtml(result, index) {
+    return `
+        <button type="button" data-index="${index}">
+            <strong>${escapeHtml(String(result.name || '').split(',')[0])}</strong>
+            <span>${escapeHtml(result.name || '')}</span>
+        </button>
+    `;
+}
+
+function setupAdminLocationPicker({ form, searchInput, resultsEl, clearButton, mapEl, initial = null }) {
+    if (!form || !searchInput || !resultsEl) return null;
+    const latitudeInput = form.querySelector('input[name="latitude"]');
+    const longitudeInput = form.querySelector('input[name="longitude"]');
+    const placeInput = form.querySelector('input[name="manual_location_name"]');
+    const providerInput = form.querySelector('input[name="manual_location_provider"]');
+    const zoneInput = form.querySelector('input[name="planting_zone"]');
+    if (!latitudeInput || !longitudeInput || !placeInput || !providerInput) return null;
+
+    const picker = {
+        timer: null,
+        marker: null,
+        map: null,
+        hasSelection() {
+            return Boolean(latitudeInput.value && longitudeInput.value);
+        },
+        setLocation(result) {
+            latitudeInput.value = result.lat;
+            longitudeInput.value = result.lng;
+            placeInput.value = result.name;
+            providerInput.value = result.provider || 'OpenStreetMap Nominatim';
+            if (zoneInput && (!zoneInput.value || zoneInput.value === 'Admin entry' || zoneInput.value === 'Imported')) {
+                zoneInput.value = String(result.name || '').split(',')[0] || 'Selected location';
+            }
+            searchInput.value = result.name;
+            resultsEl.hidden = true;
+
+            const latlng = [Number(result.lat), Number(result.lng)];
+            if (picker.map && Number.isFinite(latlng[0]) && Number.isFinite(latlng[1])) {
+                if (!picker.marker) {
+                    picker.marker = L.marker(latlng).addTo(picker.map);
+                } else {
+                    picker.marker.setLatLng(latlng);
+                }
+                picker.marker.bindPopup(result.name).openPopup();
+                picker.map.flyTo(latlng, 17, { duration: 0.7 });
+            }
+        },
+        clear() {
+            latitudeInput.value = '';
+            longitudeInput.value = '';
+            placeInput.value = '';
+            providerInput.value = '';
+            searchInput.value = '';
+            resultsEl.hidden = true;
+            if (picker.marker) {
+                picker.marker.remove();
+                picker.marker = null;
+            }
+        },
+        search(query) {
+            if (query.trim().length < 2) {
+                resultsEl.hidden = true;
+                return;
+            }
+            resultsEl.hidden = false;
+            resultsEl.innerHTML = '<button type="button" disabled>Searching Kenya locations...</button>';
+            fetch(`/api/geocode?q=${encodeURIComponent(query)}`)
+                .then(response => response.json())
+                .then(results => {
+                    if (!results.length) {
+                        resultsEl.innerHTML = '<button type="button" disabled>No matching Kenya locations found</button>';
+                        return;
+                    }
+                    resultsEl.innerHTML = results.map(locationButtonHtml).join('');
+                    resultsEl.querySelectorAll('button').forEach(button => {
+                        button.addEventListener('click', () => picker.setLocation(results[Number(button.dataset.index)]));
+                    });
+                })
+                .catch(() => {
+                    resultsEl.innerHTML = '<button type="button" disabled>Location search is temporarily unavailable</button>';
+                });
+        }
+    };
+
+    if (mapEl && window.L) {
+        picker.map = L.map(mapEl, {
+            center: [-0.0236, 37.9062],
+            zoom: 6,
+            minZoom: 5,
+            maxZoom: 19,
+            zoomControl: true,
+            attributionControl: false
+        });
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            maxNativeZoom: 19
+        }).addTo(picker.map);
+        setTimeout(() => picker.map.invalidateSize(), 160);
+    }
+
+    searchInput.addEventListener('input', event => {
+        clearTimeout(picker.timer);
+        picker.timer = setTimeout(() => picker.search(event.target.value), 220);
+    });
+    clearButton?.addEventListener('click', picker.clear);
+
+    if (initial?.lat && initial?.lng) {
+        picker.setLocation({
+            lat: initial.lat,
+            lng: initial.lng,
+            name: initial.name || `${initial.lat}, ${initial.lng}`,
+            provider: initial.provider || 'Saved location'
+        });
+    }
+
+    adminLocationPickers.set(form, picker);
+    return picker;
+}
+
+function adminLocationFieldHtml(prefix, location = {}) {
+    const lat = location.latitude ?? location.lat ?? '';
+    const lng = location.longitude ?? location.lng ?? '';
+    const name = location.manual_location_name || location.name || '';
+    const provider = location.manual_location_provider || location.provider || '';
+    const zone = location.planting_zone || 'Imported';
+    return `
+        <label>Location
+            <div class="location-search">
+                <input id="${prefix}LocationSearch" type="search" autocomplete="off" placeholder="Search exact place, organization, or building" value="${escapeHtml(name)}">
+                <button type="button" class="icon-btn" id="${prefix}ClearLocation" title="Clear selected location">
+                    <i class="fa-solid fa-location-crosshairs"></i>
+                </button>
+            </div>
+        </label>
+        <div class="location-results" id="${prefix}LocationResults" hidden></div>
+        <div id="${prefix}LocationMap" class="location-map admin-location-map" aria-label="Selected participant location map"></div>
+        <input name="planting_zone" type="hidden" value="${escapeHtml(zone)}" required>
+        <input name="manual_location_name" type="hidden" value="${escapeHtml(name)}">
+        <input name="manual_location_provider" type="hidden" value="${escapeHtml(provider)}">
+        <input name="latitude" type="hidden" value="${escapeHtml(String(lat))}">
+        <input name="longitude" type="hidden" value="${escapeHtml(String(lng))}">
+    `;
+}
+
+function bindGeneratedLocationPicker(form, prefix, location = {}) {
+    return setupAdminLocationPicker({
+        form,
+        searchInput: form.querySelector(`#${prefix}LocationSearch`),
+        resultsEl: form.querySelector(`#${prefix}LocationResults`),
+        clearButton: form.querySelector(`#${prefix}ClearLocation`),
+        mapEl: form.querySelector(`#${prefix}LocationMap`),
+        initial: {
+            lat: location.latitude ?? location.lat,
+            lng: location.longitude ?? location.lng,
+            name: location.manual_location_name || location.name,
+            provider: location.manual_location_provider || location.provider
+        }
+    });
+}
+
+function requireAdminLocation(form) {
+    const picker = adminLocationPickers.get(form);
+    if (!picker || picker.hasSelection()) return true;
+    const searchInput = form.querySelector('input[type="search"][id$="LocationSearch"]');
+    if (searchInput) {
+        searchInput.focus();
+        searchInput.setCustomValidity('Search and select a location.');
+        searchInput.reportValidity();
+        setTimeout(() => searchInput.setCustomValidity(''), 0);
+    }
+    showToast('Search and select the planting location', 'warning');
+    return false;
+}
+
 function submitAdminParticipant(event) {
     event.preventDefault();
     const form = event.currentTarget;
+    if (!requireAdminLocation(form)) return;
     const button = form.querySelector('button[type="submit"]');
     if (button) button.disabled = true;
     fetch('/api/participants', {
@@ -547,6 +730,7 @@ function submitAdminParticipant(event) {
         if (quantity) quantity.value = '1';
         if (species) species.value = 'Tree';
         if (zone) zone.value = 'Admin entry';
+        adminLocationPickers.get(form)?.clear();
         renderAdminPhotoPreview([]);
         fetchParticipants();
         fetchHubStats();

@@ -2,6 +2,10 @@
 
 {% block title %}Operations Hub - Green Ledger{% endblock %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+{% endblock %}
+
 {% block content %}
 <main class="hub-layout">
     <aside class="hub-side">
@@ -25,7 +29,7 @@
         <header class="hub-top">
             <div>
                 <h1>Operations Hub</h1>
-                <p>Mazingira Day 2026 event command center</p>
+                <p>Mazingira Yetu event command center</p>
             </div>
             <div class="actions-row" style="width: auto;">
                 <a class="btn btn-secondary" href="/export?format=zip"><i class="fa-solid fa-box-archive"></i> Export Package</a>
@@ -88,22 +92,21 @@
                             <input name="quantity" type="number" min="1" max="1000" value="1" required>
                         </label>
                     </div>
-                    <div class="form-row">
-                        <label>Planting zone
-                            <input name="planting_zone" type="text" value="Admin entry" required>
-                        </label>
-                        <label>Place label
-                            <input name="manual_location_name" type="text" placeholder="Optional location name">
-                        </label>
-                    </div>
-                    <div class="form-row">
-                        <label>Latitude
-                            <input name="latitude" type="number" step="any" placeholder="-0.50849">
-                        </label>
-                        <label>Longitude
-                            <input name="longitude" type="number" step="any" placeholder="36.89191">
-                        </label>
-                    </div>
+                    <label>Location
+                        <div class="location-search">
+                            <input id="adminLocationSearch" type="search" autocomplete="off" placeholder="Search exact place, organization, or building">
+                            <button type="button" class="icon-btn" id="adminClearLocation" title="Clear selected location">
+                                <i class="fa-solid fa-location-crosshairs"></i>
+                            </button>
+                        </div>
+                    </label>
+                    <div class="location-results" id="adminLocationResults" hidden></div>
+                    <div id="adminLocationMap" class="location-map admin-location-map" aria-label="Selected participant location map"></div>
+                    <input name="planting_zone" type="hidden" value="Admin entry" required>
+                    <input name="manual_location_name" type="hidden">
+                    <input name="manual_location_provider" type="hidden">
+                    <input name="latitude" type="hidden">
+                    <input name="longitude" type="hidden">
                     <label class="admin-photo-field">Photos
                         <input name="photos" type="file" accept="image/jpeg,image/png,image/webp" multiple>
                     </label>
@@ -298,5 +301,6 @@
 
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="{{ url_for('static', filename='js/hub.js') }}?v={{ asset_version }}"></script>
 {% endblock %}

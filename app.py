@@ -28,7 +28,7 @@ BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 APP_NAME = 'Green Ledger'
 ASSET_VERSION = datetime.utcnow().strftime('%Y%m%d%H%M%S')
 RENDER_EXTERNAL_URL = os.environ.get('RENDER_EXTERNAL_URL', '')
-DEFAULT_PRIMARY_HOST = urlparse(RENDER_EXTERNAL_URL).netloc or 'rootledger-osaw.onrender.com'
+DEFAULT_PRIMARY_HOST = urlparse(RENDER_EXTERNAL_URL).netloc or 'greenledger-osaw.onrender.com'
 PRIMARY_HOST = os.environ.get('PRIMARY_HOST', DEFAULT_PRIMARY_HOST)
 IS_PRODUCTION = os.environ.get('RENDER') == 'true' or os.environ.get('FLASK_ENV') == 'production'
 ALLOWED_IMAGE_EXTENSIONS = {'jpg', 'jpeg', 'png', 'webp'}
@@ -391,7 +391,7 @@ def init_db():
     
     # Create default event
     c.execute("INSERT OR IGNORE INTO events (id, name, date, status) VALUES (?, ?, ?, ?)",
-              ('EVENT-2026-001', 'Mazingira Day 2026', datetime.now().strftime('%Y-%m-%d'), 'active'))
+              ('EVENT-2026-001', 'Mazingira Yetu', datetime.now().strftime('%Y-%m-%d'), 'active'))
     
     conn.commit()
     conn.close()
@@ -2114,7 +2114,7 @@ def create_backup():
     metadata = {
         'timestamp': datetime.now().isoformat(),
         'version': '1.0.0',
-        'event': 'Mazingira Day 2026'
+        'event': 'Mazingira Yetu'
     }
     with open(os.path.join(backup_dir, 'metadata.json'), 'w') as f:
         json.dump(metadata, f, indent=2)
