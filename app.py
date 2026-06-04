@@ -1,12 +1,15 @@
 import os
 import uuid
 import json
+import csv
+import re
 from datetime import datetime
 import hmac
 import secrets
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from urllib.parse import urlparse
+from html import unescape
 from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, session, flash, abort
 from flask_socketio import SocketIO, emit
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -594,6 +597,183 @@ def current_visible_totals(cursor):
         'trees': total_trees,
         'participants': total_participants,
         'co2': round(total_co2, 2)
+    }
+
+def participant_payload(participant):
+    """Build the realtime payload used by display clients."""
+    participant = attach_planter_data(participant)
+    return {
+        'id': participant['id'],
+        'full_name': participant['full_name'],
+        'role': participant['role'],
+        'tree_species': participant['tree_species'],
+        'quantity': participant['quantity'],
+        'student_count': participant.get('student_count') or 1,
+        'planting_zone': participant['planting_zone'],
+        'photo_path': participant.get('photo_path') or '',
+        'photo_url': static_photo_url(participant.get('photo_path')),
+        'photos': participant.get('photos') or [],
+        'photo_urls': participant.get('photo_urls') or [],
+        'lat': participant.get('latitude'),
+        'lng': participant.get('longitude'),
+        'manual_location_name': participant.get('manual_location_name'),
+        'planter_names': participant.get('planter_names') or '',
+        'planter_names_list': participant.get('planter_names_list') or [],
+        'planter_display': participant.get('planter_display') or '',
+        'group_label': participant.get('group_label') or '',
+        'planter_activities': expanded_planter_activities(participant),
+        'timestamp': participant['timestamp'],
+        'is_vip': participant.get('is_vip') or 0,
+        'co2_saved': participant.get('co2_saved_kg') or 0,
+        'record_number': participant['record_number']
+    }
+
+def create_participant_record(data, photo_files=None, *, status='Pending', require_photo=True):
+    photo_files = [file for file in (photo_files or []) if file and file.filename]
+    full_name = (data.get('full_name') or '').strip()[:160]
+    role = (data.get('role') or 'Participant').strip()[:120]
+    tree_species = ', '.join(split_multi_value(data.get('tree_species'))).strip() or 'Tree'
+    quantity = int(data.get('quantity') or 1)
+    student_count = int(data.get('student_count') or 1)
+    planting_zone = (data.get('planting_zone') or 'Unspecified area').strip()[:100]
+    manual_location_name = (data.get('manual_location_name') or '').strip()[:200]
+    manual_location_provider = (data.get('manual_location_provider') or '').strip()[:80]
+    planter_names = planter_names_text(data.get('planter_names') or '')
+    group_label = (data.get('group_label') or '').strip()[:160]
+    latitude = parse_float(data.get('latitude') or data.get('lat'))
+    longitude = parse_float(data.get('longitude') or data.get('lng'))
+    location_accuracy = parse_float(data.get('location_accuracy') or data.get('accuracy'))
+    photo_source = (data.get('photo_source') or 'admin').strip()[:40]
+    browser_data = data.get('browser_data')
+
+    if not full_name:
+        raise ValueError('Participant name is required')
+    if require_photo and not photo_files:
+        raise ValueError('At least one photo is required')
+    if quantity <= 0 or quantity > 1000:
+        raise ValueError('Quantity must be between 1 and 1000')
+    if student_count <= 0 or student_count > 500:
+        raise ValueError('Planter count must be between 1 and 500')
+    provided_planter_names = split_planter_names(planter_names)
+    if len(provided_planter_names) > student_count:
+        student_count = len(provided_planter_names)
+    if len(photo_files) > 12:
+        raise ValueError('Please upload 12 photos or fewer at once')
+
+    photo_paths = process_images(photo_files)
+    photo_path = photo_paths[0] if photo_paths else ''
+    vip_roles = {
+        'Principal', 'Deputy Principal', 'Dean', 'Head of Department',
+        'Government Official', 'Environmental Officer', 'Trainer'
+    }
+    is_vip = 1 if role in vip_roles else 0
+    record_number = generate_record_number()
+    participant_id = str(uuid.uuid4())
+    now = datetime.now().isoformat()
+
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("""
+        INSERT INTO participants (id, record_number, full_name, role, tree_species,
+        quantity, planting_zone, photo_path, latitude, longitude, timestamp,
+        status, is_vip, co2_saved_kg, event_id, location_accuracy,
+        location_source, browser_data, photo_source, student_count,
+        manual_location_name, manual_location_provider, planter_names, group_label)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        participant_id, record_number, full_name, role, tree_species, quantity,
+        planting_zone, photo_path, latitude, longitude, now, status, is_vip,
+        quantity * 21.0, 'EVENT-2026-001', location_accuracy,
+        'admin' if latitude is not None and longitude is not None else 'admin-missing',
+        browser_data, photo_source, student_count, manual_location_name,
+        manual_location_provider, planter_names, group_label
+    ))
+    for index, extra_photo_path in enumerate(photo_paths):
+        c.execute("""
+            INSERT INTO participant_photos (id, participant_id, photo_path, sort_order, created_at)
+            VALUES (?, ?, ?, ?, ?)
+        """, (str(uuid.uuid4()), participant_id, extra_photo_path, index, now))
+    conn.commit()
+    c.execute("SELECT * FROM participants WHERE id = ?", (participant_id,))
+    participant = attach_photo_gallery(c, dict(c.fetchone()))
+    participant['photo_url'] = static_photo_url(participant.get('photo_path'))
+    totals = current_visible_totals(c)
+    conn.close()
+
+    update_event_stats()
+    payload = participant_payload(participant)
+    payload['stats'] = totals
+    socketio.emit('new_planting', payload)
+    return participant
+
+def imported_participant_draft(row):
+    lookup = {normalize_search_text(key): value for key, value in row.items()}
+
+    def first(*names, default=''):
+        for name in names:
+            value = lookup.get(normalize_search_text(name))
+            if value not in (None, ''):
+                return str(value).strip()
+        return default
+
+    planter_names = first('planter_names', 'names', 'members', 'participants')
+    group_label = first('group_label', 'group', 'team', 'club')
+    student_count = first('student_count', 'count', 'number of participants', 'planters', default='1')
+    try:
+        student_count = max(int(float(student_count)), len(split_planter_names(planter_names)), 1)
+    except ValueError:
+        student_count = max(len(split_planter_names(planter_names)), 1)
+
+    return {
+        'full_name': first('full_name', 'name', 'participant', 'participant name', default=group_label or 'Imported participant'),
+        'role': first('role', 'department', 'class', 'category', default='Participant'),
+        'tree_species': first('tree_species', 'species', 'tree', 'trees', default='Tree'),
+        'quantity': first('quantity', 'trees planted', 'number of trees', default='1'),
+        'student_count': student_count,
+        'planting_zone': first('planting_zone', 'zone', 'location', 'area', default='Unspecified area'),
+        'manual_location_name': first('manual_location_name', 'place', 'location name'),
+        'latitude': first('latitude', 'lat'),
+        'longitude': first('longitude', 'lng', 'lon'),
+        'planter_names': planter_names,
+        'group_label': group_label,
+        'source_fields': row
+    }
+
+def parse_import_file(file):
+    filename = (file.filename or '').lower()
+    content = file.read().decode('utf-8-sig', errors='replace')
+    if filename.endswith('.json'):
+        payload = json.loads(content)
+        rows = payload if isinstance(payload, list) else payload.get('participants', [])
+        return [imported_participant_draft(row) for row in rows if isinstance(row, dict)]
+    reader = csv.DictReader(StringIO(content))
+    return [imported_participant_draft(row) for row in reader]
+
+def inspect_public_form(form_url):
+    parsed = urlparse(form_url)
+    if parsed.scheme not in {'http', 'https'}:
+        raise ValueError('Use a valid http or https form link')
+    req = Request(form_url, headers={'User-Agent': f'{APP_NAME}/1.0 form-import'})
+    with urlopen(req, timeout=12) as response:
+        html = response.read(1_500_000).decode('utf-8', errors='replace')
+
+    title_match = re.search(r'<title[^>]*>(.*?)</title>', html, re.I | re.S)
+    title = unescape(re.sub(r'\s+', ' ', re.sub(r'<[^>]+>', '', title_match.group(1))).strip()) if title_match else parsed.netloc
+    labels = []
+    for raw in re.findall(r'\[\s*"([^"]{2,160})"\s*,\s*null\s*,\s*\[\[', html):
+        label = unescape(raw.replace('\\"', '"')).strip()
+        if label and label not in labels:
+            labels.append(label)
+    if not labels:
+        for raw in re.findall(r'<div[^>]+role="heading"[^>]*>(.*?)</div>', html, re.I | re.S):
+            label = unescape(re.sub(r'\s+', ' ', re.sub(r'<[^>]+>', '', raw)).strip())
+            if label and label not in labels:
+                labels.append(label)
+    return {
+        'title': title[:180],
+        'fields': labels[:80],
+        'drafts': [imported_participant_draft({field: '' for field in labels})] if labels else [],
+        'note': 'A public form link exposes the questions, not private submitted responses. Upload a CSV/JSON response export to import actual participant rows.'
     }
 
 def resolve_location(browser_lat, browser_lng, browser_accuracy, exif_location, manual_lat=None, manual_lng=None):
@@ -1476,6 +1656,66 @@ def get_participants():
     conn.close()
     return jsonify(participants)
 
+@app.route('/api/participants', methods=['POST'])
+@login_required
+def admin_create_participant():
+    """Create a participant directly from the admin hub."""
+    try:
+        participant = create_participant_record(
+            request.form,
+            request.files.getlist('photos'),
+            status=request.form.get('status') or 'Verified',
+            require_photo=False
+        )
+        return jsonify({'success': True, 'participant': participant})
+    except Exception as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
+
+@app.route('/api/participants/bulk', methods=['POST'])
+@login_required
+def admin_create_participants_bulk():
+    """Create participant records from reviewed import drafts."""
+    payload = request.get_json(silent=True) or {}
+    drafts = payload.get('participants') or []
+    created = []
+    errors = []
+    for index, draft in enumerate(drafts):
+        if not isinstance(draft, dict):
+            errors.append({'row': index + 1, 'error': 'Invalid row'})
+            continue
+        try:
+            participant = create_participant_record(draft, [], status='Verified', require_photo=False)
+            created.append({
+                'id': participant['id'],
+                'record_number': participant['record_number'],
+                'full_name': participant['full_name']
+            })
+        except Exception as exc:
+            errors.append({'row': index + 1, 'error': str(exc)})
+    return jsonify({'success': not errors, 'created': created, 'errors': errors})
+
+@app.route('/api/import-participants', methods=['POST'])
+@login_required
+def import_participants():
+    """Extract editable participant drafts from CSV/JSON exports or inspect public forms."""
+    try:
+        import_file = request.files.get('import_file')
+        form_url = (request.form.get('form_url') or '').strip()
+        if import_file and import_file.filename:
+            return jsonify({
+                'success': True,
+                'source_type': 'file',
+                'drafts': parse_import_file(import_file),
+                'note': 'Review the extracted rows, correct missing details, then save them.'
+            })
+        if form_url:
+            result = inspect_public_form(form_url)
+            result.update({'success': True, 'source_type': 'form'})
+            return jsonify(result)
+        return jsonify({'success': False, 'error': 'Upload a CSV/JSON file or paste a form link'}), 400
+    except Exception as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
+
 @app.route('/api/participants', methods=['DELETE'])
 @login_required
 def delete_all_participants():
@@ -1662,6 +1902,76 @@ def delete_participant(participant_id):
         'record_number': participant['record_number']
     })
     return jsonify({'success': True})
+
+@app.route('/api/participants/<participant_id>', methods=['PUT'])
+@login_required
+def update_participant(participant_id):
+    """Edit participant details and optionally append more photos."""
+    try:
+        full_name = (request.form.get('full_name') or '').strip()[:160]
+        role = (request.form.get('role') or '').strip()[:120]
+        tree_species = ', '.join(split_multi_value(request.form.get('tree_species'))).strip()
+        quantity = int(request.form.get('quantity') or 1)
+        student_count = int(request.form.get('student_count') or 1)
+        planting_zone = (request.form.get('planting_zone') or '').strip()[:100]
+        manual_location_name = (request.form.get('manual_location_name') or '').strip()[:200]
+        latitude = parse_float(request.form.get('latitude') or request.form.get('lat'))
+        longitude = parse_float(request.form.get('longitude') or request.form.get('lng'))
+        planter_names = planter_names_text(request.form.get('planter_names') or '')
+        group_label = (request.form.get('group_label') or '').strip()[:160]
+        status = request.form.get('status') or 'Verified'
+        if status not in {'Pending', 'Verified', 'Rejected'}:
+            status = 'Verified'
+        if not all([full_name, role, tree_species, planting_zone]):
+            return jsonify({'success': False, 'error': 'Name, role, tree species, and zone are required'}), 400
+        if quantity <= 0 or quantity > 1000 or student_count <= 0 or student_count > 500:
+            return jsonify({'success': False, 'error': 'Counts are outside allowed limits'}), 400
+        names = split_planter_names(planter_names)
+        if len(names) > student_count:
+            student_count = len(names)
+
+        new_photos = process_images(request.files.getlist('photos'))
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute("SELECT * FROM participants WHERE id = ?", (participant_id,))
+        existing = c.fetchone()
+        if not existing:
+            conn.close()
+            return jsonify({'success': False, 'error': 'Participant not found'}), 404
+        photo_path = existing['photo_path'] or (new_photos[0] if new_photos else '')
+        c.execute("""
+            UPDATE participants
+            SET full_name = ?, role = ?, tree_species = ?, quantity = ?, student_count = ?,
+                planting_zone = ?, manual_location_name = ?, latitude = ?, longitude = ?,
+                planter_names = ?, group_label = ?, status = ?, rejection_scope = NULL,
+                rejection_note = NULL, co2_saved_kg = ?
+            WHERE id = ?
+        """, (
+            full_name, role, tree_species, quantity, student_count, planting_zone,
+            manual_location_name, latitude, longitude, planter_names, group_label,
+            status, quantity * 21.0, participant_id
+        ))
+        if photo_path != existing['photo_path']:
+            c.execute("UPDATE participants SET photo_path = ? WHERE id = ?", (photo_path, participant_id))
+        existing_photo_count = len(get_participant_photo_paths(c, participant_id))
+        for offset, photo in enumerate(new_photos):
+            c.execute("""
+                INSERT INTO participant_photos (id, participant_id, photo_path, sort_order, created_at)
+                VALUES (?, ?, ?, ?, ?)
+            """, (str(uuid.uuid4()), participant_id, photo, existing_photo_count + offset, datetime.now().isoformat()))
+        conn.commit()
+        c.execute("SELECT * FROM participants WHERE id = ?", (participant_id,))
+        participant = attach_photo_gallery(c, dict(c.fetchone()))
+        participant['photo_url'] = static_photo_url(participant.get('photo_path'))
+        totals = current_visible_totals(c)
+        conn.close()
+        update_event_stats()
+        payload = participant_payload(participant)
+        payload['stats'] = totals
+        socketio.emit('participant_verified', payload)
+        return jsonify({'success': True, 'participant': participant})
+    except Exception as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
 
 @app.route('/admin/login', methods=['GET', 'POST'])
 def admin_login():

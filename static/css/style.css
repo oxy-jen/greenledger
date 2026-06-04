@@ -991,6 +991,121 @@ button {
     min-width: 0;
 }
 
+.admin-add-card {
+    margin: 18px 0;
+}
+
+.admin-add-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+    gap: 18px;
+    align-items: start;
+}
+
+.admin-participant-form,
+.admin-import-panel,
+.import-draft {
+    display: grid;
+    gap: 12px;
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.admin-participant-form label,
+.admin-import-panel label,
+.import-draft label {
+    display: grid;
+    gap: 6px;
+    color: var(--muted);
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+.admin-participant-form input,
+.admin-participant-form textarea,
+.admin-participant-form select,
+.admin-import-panel input,
+.import-draft input,
+.import-draft textarea {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 12px;
+    background: var(--card);
+    color: var(--ink);
+    font: inherit;
+}
+
+.admin-participant-form textarea,
+.import-draft textarea {
+    resize: vertical;
+}
+
+.admin-photo-field input {
+    padding: 9px;
+}
+
+.admin-photo-preview,
+.import-drafts {
+    display: grid;
+    gap: 10px;
+}
+
+.admin-photo-preview {
+    grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+}
+
+.admin-photo-preview figure {
+    margin: 0;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--card);
+}
+
+.admin-photo-preview img {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    display: block;
+}
+
+.admin-photo-preview figcaption {
+    padding: 6px;
+    color: var(--muted);
+    font-size: 0.72rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.admin-import-panel h3 {
+    margin: 0;
+    font-size: 1rem;
+}
+
+.import-result {
+    color: var(--muted);
+    font-size: 0.86rem;
+    line-height: 1.45;
+}
+
+.import-draft {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px;
+    background: var(--leaf-soft);
+}
+
+.import-draft-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
 .btn-sm {
     min-height: 32px;
     padding: 0 10px;
@@ -1370,6 +1485,11 @@ button {
     .metric-grid,
     .export-grid {
         grid-template-columns: 1fr 1fr;
+    }
+
+    .admin-add-grid,
+    .form-row {
+        grid-template-columns: 1fr;
     }
 
     .phone-screen {

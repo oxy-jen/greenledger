@@ -78,6 +78,18 @@ function setupEventListeners() {
     if (deleteAllBtn) {
         deleteAllBtn.addEventListener('click', deleteAllParticipants);
     }
+
+    const adminForm = document.getElementById('adminParticipantForm');
+    if (adminForm) {
+        adminForm.addEventListener('submit', submitAdminParticipant);
+        const photoInput = adminForm.querySelector('input[name="photos"]');
+        if (photoInput) photoInput.addEventListener('change', () => renderAdminPhotoPreview(photoInput.files));
+    }
+
+    const importForm = document.getElementById('participantImportForm');
+    if (importForm) {
+        importForm.addEventListener('submit', extractParticipantDrafts);
+    }
 }
 
 function fetchHubStats() {
@@ -207,6 +219,9 @@ function renderParticipants(participants) {
                     <span class="status-badge ${statusClass}">${escapeHtml(rejectionLabel(p) || p.status)}</span>
                     <button onclick="viewParticipant('${p.id}')" class="btn btn-sm btn-primary">
                         <i class="fa-solid fa-eye"></i> Details
+                    </button>
+                    <button onclick="editParticipant('${p.id}')" class="btn btn-sm btn-secondary">
+                        <i class="fa-solid fa-pen"></i> Edit
                     </button>
                     ${p.status !== 'Verified' ? `
                         <button onclick="verifyParticipant('${p.id}', 'Verified')" class="btn btn-sm btn-success">
@@ -497,6 +512,261 @@ function viewParticipant(id) {
     showParticipantModal(participant);
 }
 
+function renderAdminPhotoPreview(files) {
+    const preview = document.getElementById('adminPhotoPreview');
+    if (!preview) return;
+    const selected = Array.from(files || []).slice(0, 12);
+    preview.innerHTML = selected.map(file => `
+        <figure>
+            <img src="${URL.createObjectURL(file)}" alt="${escapeHtml(file.name)}">
+            <figcaption>${escapeHtml(file.name)}</figcaption>
+        </figure>
+    `).join('');
+}
+
+function submitAdminParticipant(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const button = form.querySelector('button[type="submit"]');
+    if (button) button.disabled = true;
+    fetch('/api/participants', {
+        method: 'POST',
+        headers: csrfHeader(),
+        body: new FormData(form)
+    })
+    .then(response => response.json().then(data => ({ ok: response.ok, data })))
+    .then(({ ok, data }) => {
+        if (!ok || !data.success) throw new Error(data.error || 'Failed to add participant');
+        showToast('Participant added and counted', 'success');
+        form.reset();
+        const count = form.querySelector('input[name="student_count"]');
+        const quantity = form.querySelector('input[name="quantity"]');
+        const species = form.querySelector('input[name="tree_species"]');
+        const zone = form.querySelector('input[name="planting_zone"]');
+        if (count) count.value = '1';
+        if (quantity) quantity.value = '1';
+        if (species) species.value = 'Tree';
+        if (zone) zone.value = 'Admin entry';
+        renderAdminPhotoPreview([]);
+        fetchParticipants();
+        fetchHubStats();
+    })
+    .catch(error => {
+        showToast(error.message, 'error');
+    })
+    .finally(() => {
+        if (button) button.disabled = false;
+    });
+}
+
+function extractParticipantDrafts(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const result = document.getElementById('importResult');
+    const draftsEl = document.getElementById('importDrafts');
+    if (result) result.textContent = 'Extracting...';
+    if (draftsEl) draftsEl.innerHTML = '';
+
+    fetch('/api/import-participants', {
+        method: 'POST',
+        headers: csrfHeader(),
+        body: new FormData(form)
+    })
+    .then(response => response.json().then(data => ({ ok: response.ok, data })))
+    .then(({ ok, data }) => {
+        if (!ok || !data.success) throw new Error(data.error || 'Import failed');
+        if (result) {
+            const fieldText = data.fields?.length ? ` Fields found: ${data.fields.join(', ')}` : '';
+            result.textContent = `${data.note || 'Drafts extracted.'}${fieldText}`;
+        }
+        renderImportDrafts(data.drafts || []);
+    })
+    .catch(error => {
+        if (result) result.textContent = error.message;
+        showToast(error.message, 'error');
+    });
+}
+
+function renderImportDrafts(drafts) {
+    const container = document.getElementById('importDrafts');
+    if (!container) return;
+    if (!drafts.length) {
+        container.innerHTML = '<div class="empty-state">No participant rows were found.</div>';
+        return;
+    }
+    container.innerHTML = `
+        <div class="import-draft-actions">
+            <button type="button" class="btn btn-success btn-sm" id="saveAllDrafts">
+                <i class="fa-solid fa-cloud-arrow-up"></i> Save All Drafts
+            </button>
+        </div>
+        ${drafts.map((draft, index) => importDraftHtml(draft, index)).join('')}
+    `;
+    container.querySelector('#saveAllDrafts')?.addEventListener('click', saveAllImportDrafts);
+    container.querySelectorAll('.save-draft').forEach(button => {
+        button.addEventListener('click', () => saveImportDraft(button.closest('.import-draft')));
+    });
+}
+
+function importDraftHtml(draft, index) {
+    return `
+        <form class="import-draft" data-index="${index}">
+            <div class="form-row">
+                <label>Name<input name="full_name" value="${escapeHtml(draft.full_name || '')}" required></label>
+                <label>Role<input name="role" value="${escapeHtml(draft.role || 'Participant')}" required></label>
+            </div>
+            <div class="form-row">
+                <label>Group label<input name="group_label" value="${escapeHtml(draft.group_label || '')}"></label>
+                <label>Planters<input name="student_count" type="number" min="1" max="500" value="${escapeHtml(String(draft.student_count || 1))}" required></label>
+            </div>
+            <label>Participant names<textarea name="planter_names" rows="2">${escapeHtml(draft.planter_names || '')}</textarea></label>
+            <div class="form-row">
+                <label>Species<input name="tree_species" value="${escapeHtml(draft.tree_species || 'Tree')}" required></label>
+                <label>Trees<input name="quantity" type="number" min="1" max="1000" value="${escapeHtml(String(draft.quantity || 1))}" required></label>
+            </div>
+            <div class="form-row">
+                <label>Zone<input name="planting_zone" value="${escapeHtml(draft.planting_zone || 'Imported')}" required></label>
+                <label>Place<input name="manual_location_name" value="${escapeHtml(draft.manual_location_name || '')}"></label>
+            </div>
+            <div class="form-row">
+                <label>Lat<input name="latitude" type="number" step="any" value="${escapeHtml(String(draft.latitude || ''))}"></label>
+                <label>Lng<input name="longitude" type="number" step="any" value="${escapeHtml(String(draft.longitude || ''))}"></label>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm save-draft"><i class="fa-solid fa-plus"></i> Save This Row</button>
+        </form>
+    `;
+}
+
+function draftFormData(form) {
+    const data = {};
+    new FormData(form).forEach((value, key) => {
+        data[key] = value;
+    });
+    return data;
+}
+
+function saveImportDraft(form) {
+    if (!form) return;
+    const data = draftFormData(form);
+    const body = new FormData();
+    Object.entries(data).forEach(([key, value]) => body.append(key, value));
+    body.append('status', 'Verified');
+    fetch('/api/participants', {
+        method: 'POST',
+        headers: csrfHeader(),
+        body
+    })
+    .then(response => response.json().then(payload => ({ ok: response.ok, payload })))
+    .then(({ ok, payload }) => {
+        if (!ok || !payload.success) throw new Error(payload.error || 'Failed to save draft');
+        showToast('Imported row saved', 'success');
+        form.remove();
+        fetchParticipants();
+        fetchHubStats();
+    })
+    .catch(error => showToast(error.message, 'error'));
+}
+
+function saveAllImportDrafts() {
+    const forms = Array.from(document.querySelectorAll('.import-draft'));
+    const participants = forms.map(draftFormData);
+    if (!participants.length) return;
+    fetch('/api/participants/bulk', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            ...csrfHeader()
+        },
+        body: JSON.stringify({ participants })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.created?.length) {
+            showToast(`${data.created.length} imported participants saved`, 'success');
+            document.getElementById('importDrafts').innerHTML = '';
+            fetchParticipants();
+            fetchHubStats();
+        }
+        if (data.errors?.length) {
+            showToast(`${data.errors.length} rows need correction`, 'warning');
+        }
+    })
+    .catch(error => showToast(error.message, 'error'));
+}
+
+function editParticipant(id) {
+    const participant = hubState.participants.find(p => p.id === id);
+    if (!participant) return;
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Edit Participant</h3>
+                <button onclick="this.closest('.modal-overlay').remove()" class="modal-close" aria-label="Close">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <form id="editParticipantForm" class="modal-details admin-participant-form">
+                <div class="form-row">
+                    <label>Name<input name="full_name" value="${escapeHtml(participant.full_name || '')}" required></label>
+                    <label>Role<input name="role" value="${escapeHtml(participant.role || 'Participant')}" required></label>
+                </div>
+                <div class="form-row">
+                    <label>Group label<input name="group_label" value="${escapeHtml(participant.group_label || '')}"></label>
+                    <label>Planters<input name="student_count" type="number" min="1" max="500" value="${escapeHtml(String(participant.student_count || 1))}" required></label>
+                </div>
+                <label>Participant names<textarea name="planter_names" rows="2">${escapeHtml(participant.planter_names || '')}</textarea></label>
+                <div class="form-row">
+                    <label>Species<input name="tree_species" value="${escapeHtml(participant.tree_species || 'Tree')}" required></label>
+                    <label>Trees<input name="quantity" type="number" min="1" max="1000" value="${escapeHtml(String(participant.quantity || 1))}" required></label>
+                </div>
+                <div class="form-row">
+                    <label>Zone<input name="planting_zone" value="${escapeHtml(participant.planting_zone || 'Imported')}" required></label>
+                    <label>Place<input name="manual_location_name" value="${escapeHtml(participant.manual_location_name || '')}"></label>
+                </div>
+                <div class="form-row">
+                    <label>Lat<input name="latitude" type="number" step="any" value="${escapeHtml(String(participant.latitude || ''))}"></label>
+                    <label>Lng<input name="longitude" type="number" step="any" value="${escapeHtml(String(participant.longitude || ''))}"></label>
+                </div>
+                <label>Status
+                    <select name="status">
+                        <option value="Verified" ${participant.status === 'Verified' ? 'selected' : ''}>Verified</option>
+                        <option value="Pending" ${participant.status === 'Pending' ? 'selected' : ''}>Pending</option>
+                        <option value="Rejected" ${participant.status === 'Rejected' ? 'selected' : ''}>Rejected</option>
+                    </select>
+                </label>
+                <label class="admin-photo-field">Add photos
+                    <input name="photos" type="file" accept="image/jpeg,image/png,image/webp" multiple>
+                </label>
+                <div class="actions-row">
+                    <button type="submit" class="btn btn-success"><i class="fa-solid fa-floppy-disk"></i> Save Changes</button>
+                    <button type="button" class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+                </div>
+            </form>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    const form = modal.querySelector('#editParticipantForm');
+    form.addEventListener('submit', event => {
+        event.preventDefault();
+        fetch(`/api/participants/${id}`, {
+            method: 'PUT',
+            headers: csrfHeader(),
+            body: new FormData(form)
+        })
+        .then(response => response.json().then(payload => ({ ok: response.ok, payload })))
+        .then(({ ok, payload }) => {
+            if (!ok || !payload.success) throw new Error(payload.error || 'Failed to update participant');
+            showToast('Participant updated', 'success');
+            modal.remove();
+            fetchParticipants();
+            fetchHubStats();
+        })
+        .catch(error => showToast(error.message, 'error'));
+    });
+}
+
 function showParticipantModal(participant) {
     // Create and show modal with participant details
     const modal = document.createElement('div');
@@ -687,5 +957,6 @@ window.pinParticipant = pinParticipant;
 window.unpinParticipant = unpinParticipant;
 window.deleteParticipant = deleteParticipant;
 window.viewParticipant = viewParticipant;
+window.editParticipant = editParticipant;
 window.exportData = exportData;
 window.createBackup = createBackup;

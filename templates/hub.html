@@ -11,6 +11,7 @@
         </div>
         <nav class="hub-nav" aria-label="Operations navigation">
             <a class="active" href="#dashboard"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
+            <a href="#admin-add"><i class="fa-solid fa-user-plus"></i> Add Participants</a>
             <a href="#records"><i class="fa-solid fa-list-check"></i> Verification</a>
             <a href="#care"><i class="fa-solid fa-hand-holding-heart"></i> Tree Care</a>
             <a href="#reports"><i class="fa-solid fa-chart-simple"></i> Reports</a>
@@ -49,6 +50,81 @@
             <div class="metric-card">
                 <span>Pending <i class="fa-solid fa-shield-halved"></i></span>
                 <strong id="pendingVerification">{{ pending }}</strong>
+            </div>
+        </section>
+
+        <section class="hub-card admin-add-card" id="admin-add">
+            <div class="hub-card-head">
+                <h2>Add Participants</h2>
+                <i class="fa-solid fa-user-plus"></i>
+            </div>
+            <div class="admin-add-grid">
+                <form id="adminParticipantForm" class="admin-participant-form" enctype="multipart/form-data">
+                    <input type="hidden" name="status" value="Verified">
+                    <div class="form-row">
+                        <label>Participant or group name
+                            <input name="full_name" type="text" placeholder="Name on display" required>
+                        </label>
+                        <label>Role / department / class
+                            <input name="role" type="text" placeholder="Environmental Club" required>
+                        </label>
+                    </div>
+                    <div class="form-row">
+                        <label>Individual or group label
+                            <input name="group_label" type="text" placeholder="Group A, Class 2B, individual">
+                        </label>
+                        <label>Planter count
+                            <input name="student_count" type="number" min="1" max="500" value="1" required>
+                        </label>
+                    </div>
+                    <label>Participant names
+                        <textarea name="planter_names" rows="3" placeholder="One name per line for group entries"></textarea>
+                    </label>
+                    <div class="form-row">
+                        <label>Tree species
+                            <input name="tree_species" type="text" value="Tree" required>
+                        </label>
+                        <label>Trees planted
+                            <input name="quantity" type="number" min="1" max="1000" value="1" required>
+                        </label>
+                    </div>
+                    <div class="form-row">
+                        <label>Planting zone
+                            <input name="planting_zone" type="text" value="Admin entry" required>
+                        </label>
+                        <label>Place label
+                            <input name="manual_location_name" type="text" placeholder="Optional location name">
+                        </label>
+                    </div>
+                    <div class="form-row">
+                        <label>Latitude
+                            <input name="latitude" type="number" step="any" placeholder="-0.50849">
+                        </label>
+                        <label>Longitude
+                            <input name="longitude" type="number" step="any" placeholder="36.89191">
+                        </label>
+                    </div>
+                    <label class="admin-photo-field">Photos
+                        <input name="photos" type="file" accept="image/jpeg,image/png,image/webp" multiple>
+                    </label>
+                    <div id="adminPhotoPreview" class="admin-photo-preview"></div>
+                    <button type="submit" class="btn btn-success"><i class="fa-solid fa-user-check"></i> Add and Count</button>
+                </form>
+
+                <div class="admin-import-panel">
+                    <h3>Import from File or Form Link</h3>
+                    <form id="participantImportForm" enctype="multipart/form-data">
+                        <label>Google Form or public form link
+                            <input name="form_url" type="url" placeholder="https://docs.google.com/forms/...">
+                        </label>
+                        <label>CSV or JSON response export
+                            <input name="import_file" type="file" accept=".csv,.json,application/json,text/csv">
+                        </label>
+                        <button type="submit" class="btn btn-secondary"><i class="fa-solid fa-wand-magic-sparkles"></i> Extract Drafts</button>
+                    </form>
+                    <div id="importResult" class="import-result"></div>
+                    <div id="importDrafts" class="import-drafts"></div>
+                </div>
             </div>
         </section>
 
