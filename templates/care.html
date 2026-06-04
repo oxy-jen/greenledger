@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}Care for a Tree - RootLedger{% endblock %}
+
+{% block content %}
+<main class="care-page">
+    <header class="care-hero">
+        <div class="brand">
+            <span class="brand-mark"><i class="fa-solid fa-hand-holding-heart"></i></span>
+            <span>RootLedger</span>
+        </div>
+        <div>
+            <h1>Care for a Tree</h1>
+            <p>Find a planted tree near you and volunteer to help it survive.</p>
+        </div>
+        <a class="btn btn-secondary" href="/"><i class="fa-solid fa-seedling"></i> Plant Tree</a>
+    </header>
+
+    <section class="care-tools">
+        <form class="care-search" method="GET" action="/care">
+            <input id="careLat" type="hidden" name="lat" value="{{ reference_lat or '' }}">
+            <input id="careLng" type="hidden" name="lng" value="{{ reference_lng or '' }}">
+            <div class="field">
+                <label for="treeSearch">Search</label>
+                <input id="treeSearch" type="search" name="q" value="{{ query }}" placeholder="Species, place, planter, or record">
+            </div>
+            <button class="btn btn-primary" type="submit"><i class="fa-solid fa-magnifying-glass"></i> Find</button>
+            <button class="btn btn-secondary" type="button" id="useMyLocation"><i class="fa-solid fa-location-crosshairs"></i> Near Me</button>
+        </form>
+    </section>
+
+    <section class="care-grid" aria-label="Available tree care records">
+        {% if trees %}
+            {% for tree in trees %}
+            <article class="tree-care-card">
+                {% if tree.photo_urls %}
+                <img src="{{ tree.photo_urls[0] }}?v={{ asset_version }}" alt="{{ tree.tree_species }} planted by {{ tree.full_name }}" loading="lazy" decoding="async">
+                {% else %}
+                <div class="tree-care-empty"><i class="fa-solid fa-tree"></i></div>
+                {% endif %}
+                <div class="tree-care-body">
+                    <div class="tree-care-top">
+                        <span class="status-badge {% if tree.volunteer_count %}status-verified{% else %}status-pending{% endif %}">
+                            {{ tree.care_status }}
+                        </span>
+                        {% if tree.distance_km is not none %}
+                        <small>{{ "%.1f"|format(tree.distance_km) }} km away</small>
+                        {% endif %}
+                    </div>
+                    <h2>{{ tree.tree_species }}</h2>
+                    <p>{{ tree.location_label }}</p>
+                    <dl class="tree-care-meta">
+                        <div><dt>Planted by</dt><dd>{{ tree.planter_display or tree.full_name }}</dd></div>
+                        <div><dt>Record</dt><dd>{{ tree.record_number }}</dd></div>
+                        <div><dt>Volunteers</dt><dd>{{ tree.volunteer_count }}</dd></div>
+                    </dl>
+                    <a class="btn btn-primary" href="{{ url_for('care_tree_detail', record_number=tree.record_number) }}">
+                        <i class="fa-solid fa-hand"></i> Volunteer
+                    </a>
+                </div>
+            </article>
+            {% endfor %}
+        {% else %}
+            <div class="empty-state">No matching tree records yet.</div>
+        {% endif %}
+    </section>
+</main>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('useMyLocation')?.addEventListener('click', () => {
+    if (!navigator.geolocation) {
+        document.querySelector('.care-search').submit();
+        return;
+    }
+    navigator.geolocation.getCurrentPosition(
+        position => {
+            document.getElementById('careLat').value = position.coords.latitude;
+            document.getElementById('careLng').value = position.coords.longitude;
+            document.querySelector('.care-search').submit();
+        },
+        () => document.querySelector('.care-search').submit(),
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+});
+</script>
+{% endblock %}

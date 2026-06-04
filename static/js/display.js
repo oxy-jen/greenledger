@@ -1,7 +1,7 @@
 const EVENT_LOCATION = {
-    name: 'Mathenge TTI, Othaya',
-    lat: -0.5084917,
-    lng: 36.8919167
+    name: 'Kenya',
+    lat: -0.0236,
+    lng: 37.9062
 };
 
 const MAP_MAX_ZOOM = 20;
@@ -46,13 +46,18 @@ const displayState = {
     clusterLayer: null,
     heatLayer: null,
     zoneLayer: null,
+    latestLayer: null,
     userMarker: null,
     previewMarker: null,
     layers: {},
     activeLayer: 'street',
     viewMode: 'street',
     densityEnabled: false,
-    firstFit: true
+    firstFit: true,
+    lastFocusedRecordId: null,
+    feedSignature: '',
+    momentsSignature: '',
+    imageVersion: Date.now()
 };
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -85,8 +90,8 @@ function setupClock() {
 function setupMap() {
     displayState.map = L.map('liveMap', {
         center: [EVENT_LOCATION.lat, EVENT_LOCATION.lng],
-        zoom: 17,
-        minZoom: 14,
+        zoom: 6,
+        minZoom: 5,
         maxZoom: MAP_MAX_ZOOM,
         zoomControl: false,
         preferCanvas: true,
@@ -125,6 +130,7 @@ function setupMap() {
     }).addTo(displayState.map);
 
     displayState.zoneLayer = L.layerGroup().addTo(displayState.map);
+    displayState.latestLayer = L.layerGroup().addTo(displayState.map);
     drawZones();
     setTimeout(() => displayState.map.invalidateSize(), 120);
 }
@@ -169,35 +175,56 @@ function setupSocket() {
                 displayState.records.set(record.id, record);
                 renderMap();
                 updatePanels();
+                focusPlantingRecord(record, true);
             }
-            addFeedItem(record, true);
+            if (data.stats) updateStats(data.stats);
+            const activityRecords = expandFeedRecords([record]);
+            preloadRecordImages([record, ...activityRecords]);
+            activityRecords.reverse().forEach(activity => addFeedItem(activity, true));
             renderMoments([record, ...Array.from(document.querySelectorAll('#momentsGrid img')).map(img => ({
                 name: img.alt,
                 photo: img.getAttribute('data-photo-path') || ''
             }))]);
+            setTimeout(refreshDisplay, 500);
         }
     });
     socket.on('participant_verified', data => {
-        if (data.status === 'Rejected') {
+        if (data.status === 'Rejected' && data.rejection_scope !== 'photo') {
             displayState.records.delete(data.record_number || data.id);
             renderMap();
             updatePanels();
         }
+        setTimeout(refreshDisplay, 300);
+    });
+    socket.on('participant_deleted', data => {
+        displayState.records.delete(data.record_number || data.id);
+        renderMap();
+        updatePanels();
+        setTimeout(refreshDisplay, 300);
+    });
+    socket.on('official_spotlight_updated', () => {
+        setTimeout(refreshDisplay, 300);
     });
 }
 
 function refreshDisplay() {
+    displayState.imageVersion = Date.now();
     Promise.all([
         fetch('/api/stats').then(response => response.json()),
-        fetch('/api/map-records').then(response => response.json())
+        fetch('/api/map-records').then(response => response.json()),
+        fetch('/api/tree-of-the-moment').then(response => response.json())
     ])
-        .then(([stats, records]) => {
-            displayState.records = new Map(records.map(record => [record.id, record]));
-            const recentRecords = (stats.recent || []).map(normalizeApiRecord);
+        .then(([stats, records, official]) => {
+            const mapRecords = records.map(normalizeApiRecord);
+            displayState.records = new Map(mapRecords.map(record => [record.id, record]));
+            const recentRecords = expandFeedRecords((stats.recent || []).map(normalizeApiRecord));
+            preloadRecordImages([...mapRecords.slice(0, 12), ...recentRecords.slice(0, 12)]);
             updateStats(stats);
             renderMap();
             updatePanels();
-            updateFeed(recentRecords.slice(0, 8));
+            updateFeed(recentRecords.slice(0, 24));
+            renderOfficialSpotlight(normalizeOfficialRecord(official));
+            focusLatestRecord(mapRecords);
         })
         .catch(() => setConnectionState(false));
 }
@@ -273,6 +300,53 @@ function createTreeMarker(record) {
         maxWidth: 280
     });
     return marker;
+}
+
+function focusLatestRecord(records) {
+    const latest = records.find(hasCoordinates);
+    if (latest) focusPlantingRecord(latest, false);
+}
+
+function focusPlantingRecord(record, force) {
+    if (!displayState.map || !displayState.latestLayer || !hasCoordinates(record)) return;
+    if (!force && displayState.lastFocusedRecordId === record.id) return;
+    displayState.lastFocusedRecordId = record.id;
+
+    displayState.latestLayer.clearLayers();
+    const latlng = [Number(record.lat), Number(record.lng)];
+    const marker = L.marker(latlng, {
+        zIndexOffset: 1000,
+        icon: latestPlantingIcon(record)
+    }).addTo(displayState.latestLayer);
+    marker.bindPopup(treePopup({
+        ...record,
+        treeId: record.id,
+        planterName: planterNameForIndex(record, 0),
+        species: speciesForIndex(record, 0)
+    }), {
+        className: 'tree-popup latest-tree-popup',
+        maxWidth: 280
+    });
+    marker.openPopup();
+    displayState.map.flyTo(latlng, Math.max(displayState.map.getZoom(), 17), {
+        animate: true,
+        duration: force ? 0.95 : 0.7
+    });
+}
+
+function latestPlantingIcon(record) {
+    return L.divIcon({
+        className: 'latest-tree-marker',
+        html: `
+            <span class="latest-tree-pulse"></span>
+            <span class="latest-tree-pin">
+                <img src="${photoUrl(record.photo)}" alt="">
+            </span>
+        `,
+        iconSize: [44, 50],
+        iconAnchor: [22, 44],
+        popupAnchor: [0, -42]
+    });
 }
 
 function clusterIcon(count) {
@@ -383,6 +457,9 @@ function renderZoneList(zoneStats) {
 function updateFeed(records) {
     const feed = document.getElementById('liveFeed');
     if (!feed) return;
+    const signature = records.map(record => `${record.id}:${record.photo}:${record.name}:${record.species}`).join('|');
+    if (signature && signature === displayState.feedSignature) return;
+    displayState.feedSignature = signature;
     if (!records.length) {
         feed.innerHTML = '<div class="empty-state">Waiting for participant submissions.</div>';
         renderMoments([]);
@@ -400,25 +477,26 @@ function addFeedItem(record, prepend) {
 
     const item = document.createElement('article');
     item.className = feed.classList.contains('tv-feed') ? 'feed-item' : 'gis-feed-item';
+    const imageUrl = photoUrl(record.photo);
     item.innerHTML = feed.classList.contains('tv-feed') ? `
-        <img class="feed-image" src="${photoUrl(record.photo)}" alt="${escapeHtml(record.name || 'Volunteer')}">
+        <img class="feed-image" src="${imageUrl}" alt="${escapeHtml(record.name || 'Volunteer')}" loading="eager" decoding="async" onerror="this.onerror=null;this.src='${photoUrl('')}'">
         <div>
             <strong class="feed-name">${escapeHtml(record.name || 'Volunteer')}</strong>
             <span class="feed-details">${formatNumber(record.quantity || 1)} planted ${escapeHtml(record.species || 'Tree')}</span>
-            <span class="feed-role">${escapeHtml(record.role || record.zone || 'Participant')}</span>
+            <span class="feed-role">${escapeHtml(groupLabel(record))} | ${escapeHtml(record.locationName || record.zone || 'Planting zone')}</span>
         </div>
-        <img class="feed-thumb" src="${photoUrl(record.photo)}" alt="">
+        <img class="feed-thumb" src="${imageUrl}" alt="" loading="eager" decoding="async" onerror="this.onerror=null;this.src='${photoUrl('')}'">
     ` : `
-        <img src="${photoUrl(record.photo)}" alt="${escapeHtml(record.name || 'Volunteer')}">
+        <img src="${imageUrl}" alt="${escapeHtml(record.name || 'Volunteer')}" loading="eager" decoding="async" onerror="this.onerror=null;this.src='${photoUrl('')}'">
         <div>
             <strong>${escapeHtml(record.name || 'Volunteer')}</strong>
-            <span>${formatNumber(record.quantity || 1)} x ${escapeHtml(record.species || 'Tree')} in ${escapeHtml(record.zone || 'Planting zone')}</span>
+            <span>${formatNumber(record.quantity || 1)} x ${escapeHtml(record.species || 'Tree')} | ${escapeHtml(groupLabel(record))}</span>
         </div>
         <i class="fa-solid fa-tree"></i>
     `;
     if (prepend) feed.prepend(item);
     else feed.appendChild(item);
-    while (feed.children.length > 8) {
+    while (feed.children.length > 30) {
         feed.removeChild(feed.lastElementChild);
     }
 }
@@ -427,15 +505,82 @@ function renderMoments(records) {
     const grid = document.getElementById('momentsGrid');
     if (!grid) return;
 
-    const photos = records.filter(record => record.photo).slice(0, 12);
+    const photos = records.flatMap(record => {
+        const gallery = Array.isArray(record.photos) && record.photos.length ? record.photos : [record.photo];
+        return gallery.filter(Boolean).map(photo => ({ ...record, photo }));
+    }).slice(0, 48);
+    const signature = photos.map(record => `${record.photo}:${record.name}`).join('|');
+    if (signature && signature === displayState.momentsSignature) return;
+    displayState.momentsSignature = signature;
     if (!photos.length) {
         grid.innerHTML = '<div class="empty-state">Waiting for participant photos.</div>';
         return;
     }
 
     grid.innerHTML = photos.map(record => `
-        <img src="${photoUrl(record.photo)}" alt="${escapeHtml(record.name || 'Planting moment')}" data-photo-path="${escapeHtml(record.photo)}">
+        <img src="${photoUrl(record.photo)}" alt="${escapeHtml(record.name || 'Planting moment')}" data-photo-path="${escapeHtml(record.photo)}" loading="eager" decoding="async" onerror="this.onerror=null;this.src='${photoUrl('')}'">
     `).join('');
+}
+
+function renderOfficialSpotlight(record) {
+    const card = document.getElementById('officialSpotlight');
+    const body = document.getElementById('officialSpotlightBody');
+    if (!card || !body) return;
+
+    if (!record || !record.id || !record.vip) {
+        card.hidden = true;
+        body.innerHTML = '';
+        return;
+    }
+
+    card.hidden = false;
+    body.innerHTML = `
+        <img src="${photoUrl(record.photo)}" alt="${escapeHtml(record.name || 'Official')}" loading="eager" decoding="async" onerror="this.onerror=null;this.src='${photoUrl('')}'">
+        <div>
+            <strong>${escapeHtml(record.name || 'Official')}</strong>
+            <span>${escapeHtml(record.role || 'Official')}</span>
+            <small>${formatNumber(record.quantity || 1)} ${Number(record.quantity || 1) === 1 ? 'tree' : 'trees'} planted</small>
+        </div>
+    `;
+}
+
+function preloadRecordImages(records) {
+    const urls = new Set();
+    records.forEach(record => {
+        if (record.photo) urls.add(photoUrl(record.photo));
+        (record.photos || []).forEach(photo => urls.add(photoUrl(photo)));
+    });
+    Array.from(urls).slice(0, 18).forEach(url => {
+        const image = new Image();
+        image.decoding = 'async';
+        image.src = url;
+    });
+}
+
+function expandFeedRecords(records) {
+    return records.flatMap(record => {
+        if (Array.isArray(record.planterActivities) && record.planterActivities.length) {
+            return record.planterActivities.map((activity, index) => ({
+                ...record,
+                id: `${record.id}-planter-${index + 1}`,
+                name: activity.name || record.name,
+                species: activity.species || speciesForIndex(record, index),
+                photo: activity.photo_url || activity.photo || record.photo,
+                quantity: activity.tree_share || 1,
+                planterIndex: index + 1
+            }));
+        }
+        const names = Array.isArray(record.planterNames) ? record.planterNames : [];
+        if (!names.length) return [record];
+        return names.map((name, index) => ({
+            ...record,
+            id: `${record.id}-planter-${index + 1}`,
+            name,
+            species: speciesForIndex(record, index),
+            quantity: 1,
+            planterIndex: index + 1
+        }));
+    });
 }
 
 function renderLeaderboard(rows) {
@@ -482,7 +627,7 @@ function locateVolunteer() {
 
 function plantTreeHere() {
     if (!navigator.geolocation) {
-        window.location.href = '/';
+        window.location.href = '/plant';
         return;
     }
     navigator.geolocation.getCurrentPosition(
@@ -500,12 +645,12 @@ function plantTreeHere() {
                 <div class="tree-popup-card">
                     <strong>Plant Tree Here</strong>
                     <span>GPS point captured. Complete the registration form with photo evidence.</span>
-                    <a class="popup-action" href="/">Open registration</a>
+                    <a class="popup-action" href="/plant">Open registration</a>
                 </div>
             `).openPopup();
             displayState.map.flyTo(latlng, 18, { duration: 0.9 });
         },
-        () => { window.location.href = '/'; },
+        () => { window.location.href = '/plant'; },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
 }
@@ -535,9 +680,12 @@ function treePopup(record) {
             <div class="popup-grid">
                 <span>Species</span><strong>${escapeHtml(record.species || 'Tree')}</strong>
                 <span>Date planted</span><strong>${formatShortDate(record.timestamp)}</strong>
-                <span>Volunteer</span><strong>${escapeHtml(record.name || 'Volunteer')}</strong>
+                <span>Planter</span><strong>${escapeHtml(record.planterName || record.name || 'Volunteer')}</strong>
+                <span>Planters</span><strong>${formatNumber(record.studentCount || 1)}</strong>
+                <span>Place</span><strong>${escapeHtml(record.locationName || record.zone || 'Mapped location')}</strong>
                 <span>Survival status</span><strong>${escapeHtml(record.status || 'Pending')}</strong>
             </div>
+            <a class="popup-action" href="/care/tree/${encodeURIComponent(record.id)}">Volunteer to care</a>
         </div>
     `;
 }
@@ -562,10 +710,17 @@ function normalizeSocketRecord(data) {
         role: data.role,
         species: data.tree_species,
         quantity: Number(data.quantity || 1),
+        studentCount: Number(data.student_count || 1),
         zone: data.planting_zone,
         photo: data.photo_url || data.photo_path,
+        photos: data.photo_urls || data.photos || [],
         lat: Number.isNaN(lat) ? null : lat,
         lng: Number.isNaN(lng) ? null : lng,
+        locationName: data.manual_location_name || data.planting_zone,
+        planterNames: data.planter_names_list || splitNames(data.planter_names),
+        planterDisplay: data.planter_display,
+        planterActivities: normalizeActivities(data.planter_activities),
+        groupLabelText: data.group_label || '',
         timestamp: data.timestamp,
         status: 'Pending',
         co2: data.co2_saved
@@ -581,14 +736,50 @@ function normalizeApiRecord(record) {
         role: record.role,
         species: record.species,
         quantity: Number(record.quantity || 1),
+        studentCount: Number(record.student_count || 1),
         zone: record.zone,
         photo: record.photo_url || record.photo,
+        photos: record.photo_urls || record.photos || [],
         lat: Number.isNaN(lat) ? null : lat,
         lng: Number.isNaN(lng) ? null : lng,
+        locationName: record.manual_location_name || record.locationName || record.zone,
+        planterNames: record.planter_names_list || splitNames(record.planter_names),
+        planterDisplay: record.planter_display,
+        planterActivities: normalizeActivities(record.planter_activities),
+        groupLabelText: record.group_label || '',
         timestamp: record.timestamp,
         status: record.status || 'Pending',
-        co2: record.co2
+        co2: record.co2,
+        vip: Boolean(record.vip || record.is_vip)
     };
+}
+
+function normalizeOfficialRecord(record) {
+    if (!record || !record.record_number) return null;
+    return normalizeApiRecord({
+        id: record.record_number,
+        record_number: record.record_number,
+        name: record.full_name,
+        role: record.role,
+        species: record.tree_species,
+        quantity: record.quantity,
+        student_count: record.student_count,
+        zone: record.planting_zone,
+        photo: record.photo_url || record.photo_path,
+        photo_url: record.photo_url,
+        photos: record.photo_urls || record.photos || [],
+        photo_urls: record.photo_urls || [],
+        lat: record.latitude,
+        lng: record.longitude,
+        manual_location_name: record.manual_location_name,
+        planter_names: record.planter_names,
+        planter_display: record.planter_display,
+        planter_activities: record.planter_activities,
+        group_label: record.group_label,
+        timestamp: record.timestamp,
+        status: record.status,
+        vip: Boolean(record.is_vip)
+    });
 }
 
 function hasCoordinates(record) {
@@ -608,6 +799,8 @@ function expandTreePoints(records) {
             points.push({
                 ...record,
                 treeId: `${record.id}-${String(index + 1).padStart(3, '0')}`,
+                species: speciesForIndex(record, index),
+                planterName: planterNameForIndex(record, index),
                 lat: Number(record.lat) + offset.lat,
                 lng: Number(record.lng) + offset.lng,
                 quantity: 1
@@ -649,6 +842,40 @@ function speciesColor(species) {
     return '#1f9d55';
 }
 
+function splitValues(value) {
+    return String(value || '')
+        .split(/[\n,;]+/)
+        .map(item => item.trim())
+        .filter(Boolean);
+}
+
+function splitNames(value) {
+    return splitValues(value).slice(0, 500);
+}
+
+function speciesForIndex(record, index) {
+    const speciesList = splitValues(record.species);
+    if (!speciesList.length) return record.species || 'Tree';
+    return speciesList[index % speciesList.length];
+}
+
+function planterNameForIndex(record, index) {
+    const names = Array.isArray(record.planterNames) ? record.planterNames : [];
+    if (names.length) return names[index % names.length];
+    return record.groupLabelText || record.planterDisplay || record.name || 'Volunteer';
+}
+
+function normalizeActivities(activities) {
+    if (!Array.isArray(activities)) return [];
+    return activities.map(activity => ({
+        name: activity.name,
+        species: activity.species,
+        photo: activity.photo,
+        photo_url: activity.photo_url,
+        tree_share: activity.tree_share
+    }));
+}
+
 function zoneFillColor(completion) {
     if (completion >= 75) return '#1f7a4a';
     if (completion >= 40) return '#4f9f46';
@@ -658,10 +885,26 @@ function zoneFillColor(completion) {
 function photoUrl(path) {
     if (!path) return 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22240%22 height=%22160%22 viewBox=%220 0 240 160%22%3E%3Crect width=%22240%22 height=%22160%22 fill=%22%23eef5ee%22/%3E%3Ccircle cx=%22120%22 cy=%2272%22 r=%2228%22 fill=%22%2384c98d%22/%3E%3Cpath d=%22M120 76v40%22 stroke=%22%231f6b45%22 stroke-width=%228%22 stroke-linecap=%22round%22/%3E%3C/svg%3E';
     const value = String(path);
-    if (/^(data:|blob:|https?:\/\/|\/)/i.test(value)) return value;
+    if (/^(data:|blob:|https?:\/\/)/i.test(value)) return value;
+    if (value.startsWith('/static/')) return addImageVersion(value);
+    if (value.startsWith('/')) return value;
 
     const normalized = value.replace(/\\/g, '/').replace(/^static\//, '');
-    return `/static/${normalized.split('/').map(encodeURIComponent).join('/')}`;
+    return addImageVersion(`/static/${normalized.split('/').map(encodeURIComponent).join('/')}`);
+}
+
+function addImageVersion(url) {
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url}${separator}v=${displayState.imageVersion}`;
+}
+
+function groupLabel(record) {
+    if (record.planterDisplay && Number(record.studentCount || 1) > 1) {
+        return record.planterDisplay;
+    }
+    if (record.groupLabelText) return record.groupLabelText;
+    const count = Number(record.studentCount || 1);
+    return `${formatNumber(count)} ${count === 1 ? 'planter' : 'planters'}`;
 }
 
 function setConnectionState(connected) {

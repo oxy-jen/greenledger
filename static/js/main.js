@@ -2,11 +2,13 @@
 
 // Utility functions
 function formatNumber(num) {
-    return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    return String(num ?? 0).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
 function formatDate(dateString) {
+    if (!dateString) return '';
     const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return '';
     return date.toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'long',
@@ -14,6 +16,16 @@ function formatDate(dateString) {
         hour: '2-digit',
         minute: '2-digit'
     });
+}
+
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    }[char]));
 }
 
 // Toast notifications
@@ -36,6 +48,76 @@ function showToast(message, type = 'success') {
         toast.style.opacity = '0';
         setTimeout(() => toast.remove(), 300);
     }, 3000);
+}
+
+function showConfirmDialog({
+    title = 'Confirm action',
+    message = '',
+    confirmText = 'Continue',
+    cancelText = 'Cancel',
+    danger = false,
+    inputLabel = '',
+    requiredText = ''
+} = {}) {
+    return new Promise(resolve => {
+        const modal = document.createElement('div');
+        modal.className = 'modal-overlay app-dialog-overlay';
+        modal.innerHTML = `
+            <div class="modal-content app-dialog" role="dialog" aria-modal="true" aria-labelledby="appDialogTitle">
+                <div class="modal-header">
+                    <h3 id="appDialogTitle">${escapeHtml(title)}</h3>
+                    <button type="button" class="modal-close" aria-label="Close">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                <div class="app-dialog-body">
+                    ${message ? `<p>${escapeHtml(message)}</p>` : ''}
+                    ${requiredText ? `
+                        <label class="field app-dialog-field">
+                            <span>${escapeHtml(inputLabel || `Type ${requiredText} to continue`)}</span>
+                            <input type="text" class="app-dialog-input" autocomplete="off">
+                        </label>
+                    ` : ''}
+                    <div class="actions-row app-dialog-actions">
+                        <button type="button" class="btn btn-secondary app-dialog-cancel">${escapeHtml(cancelText)}</button>
+                        <button type="button" class="btn ${danger ? 'btn-danger' : 'btn-primary'} app-dialog-confirm">
+                            ${escapeHtml(confirmText)}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const close = value => {
+            modal.remove();
+            resolve(value);
+        };
+        const input = modal.querySelector('.app-dialog-input');
+        const confirmBtn = modal.querySelector('.app-dialog-confirm');
+        const validate = () => {
+            if (!requiredText || !input) return;
+            confirmBtn.disabled = input.value !== requiredText;
+        };
+
+        modal.querySelector('.modal-close').addEventListener('click', () => close(false));
+        modal.querySelector('.app-dialog-cancel').addEventListener('click', () => close(false));
+        confirmBtn.addEventListener('click', () => {
+            if (requiredText && input?.value !== requiredText) return;
+            close(requiredText ? input.value : true);
+        });
+        modal.addEventListener('click', event => {
+            if (event.target === modal) close(false);
+        });
+        modal.addEventListener('keydown', event => {
+            if (event.key === 'Escape') close(false);
+            if (event.key === 'Enter' && !confirmBtn.disabled) confirmBtn.click();
+        });
+
+        document.body.appendChild(modal);
+        validate();
+        (input || confirmBtn).focus();
+        if (input) input.addEventListener('input', validate);
+    });
 }
 
 // File upload preview

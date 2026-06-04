@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+
+{% block title %}Tree Care - {{ participant.record_number }}{% endblock %}
+
+{% block content %}
+<main class="care-page care-detail-page">
+    <header class="care-hero">
+        <div class="brand">
+            <span class="brand-mark"><i class="fa-solid fa-tree"></i></span>
+            <span>RootLedger</span>
+        </div>
+        <div>
+            <h1>{{ participant.tree_species }}</h1>
+            <p>{{ participant.location_label }} · {{ participant.record_number }}</p>
+        </div>
+        <a class="btn btn-secondary" href="/care"><i class="fa-solid fa-arrow-left"></i> Trees</a>
+    </header>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="care-flashes">
+            {% for category, message in messages %}
+            <div class="flash-message flash-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    {% endwith %}
+
+    <section class="care-detail-grid">
+        <article class="care-panel tree-profile">
+            {% if participant.photo_urls %}
+            <img src="{{ participant.photo_urls[0] }}?v={{ asset_version }}" alt="{{ participant.tree_species }}" loading="eager" decoding="async">
+            {% else %}
+            <div class="tree-care-empty"><i class="fa-solid fa-tree"></i></div>
+            {% endif %}
+            <div class="tree-profile-body">
+                <span class="status-badge {% if participant.volunteer_count %}status-verified{% else %}status-pending{% endif %}">
+                    {{ participant.care_status }}
+                </span>
+                <h2>{{ participant.tree_species }}</h2>
+                <dl class="tree-care-meta">
+                    <div><dt>Planted by</dt><dd>{{ participant.planter_display or participant.full_name }}</dd></div>
+                    <div><dt>Role</dt><dd>{{ participant.role }}</dd></div>
+                    <div><dt>Location</dt><dd>{{ participant.location_label }}</dd></div>
+                    <div><dt>Trees</dt><dd>{{ participant.quantity }}</dd></div>
+                    <div><dt>Volunteers</dt><dd>{{ participant.volunteer_count }}</dd></div>
+                </dl>
+            </div>
+        </article>
+
+        <article class="care-panel">
+            <div class="care-panel-head">
+                <h2>Volunteer</h2>
+                <i class="fa-solid fa-hand-holding-heart"></i>
+            </div>
+            <form class="portal-form" method="POST" action="{{ url_for('volunteer_for_tree', record_number=participant.record_number) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="field">
+                    <label for="volunteer_name">Your Name</label>
+                    <input id="volunteer_name" name="volunteer_name" type="text" required autocomplete="name">
+                </div>
+                <div class="field">
+                    <label for="contact">Phone or Email</label>
+                    <input id="contact" name="contact" type="text" autocomplete="email" placeholder="Optional">
+                </div>
+                <div class="field">
+                    <label for="message">Message</label>
+                    <textarea id="message" name="message" rows="4" placeholder="Ask where it is, how to water it, or when to visit."></textarea>
+                </div>
+                <button class="btn btn-primary" type="submit"><i class="fa-solid fa-circle-check"></i> Volunteer</button>
+            </form>
+        </article>
+
+        <article class="care-panel care-wide">
+            <div class="care-panel-head">
+                <h2>Volunteer Requests</h2>
+                <i class="fa-solid fa-bell"></i>
+            </div>
+            <div class="care-list">
+                {% if volunteers %}
+                    {% for volunteer in volunteers %}
+                    <div class="care-row">
+                        <div>
+                            <strong>{{ volunteer.volunteer_name }}</strong>
+                            <span>{{ volunteer.contact or 'No contact added' }} · {{ volunteer.status }}</span>
+                            {% if volunteer.message %}<p>{{ volunteer.message }}</p>{% endif %}
+                        </div>
+                        <form class="ack-form" method="POST" action="{{ url_for('acknowledge_volunteer', record_number=participant.record_number, volunteer_id=volunteer.id) }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input name="planter_name" type="text" placeholder="Planter name" value="{{ participant.full_name }}">
+                            <input name="thank_message" type="text" placeholder="Thank-you note">
+                            <button class="btn btn-secondary btn-sm" type="submit" name="action" value="acknowledge">
+                                <i class="fa-solid fa-check"></i> Acknowledge
+                            </button>
+                            <button class="btn btn-primary btn-sm" type="submit" name="action" value="thank">
+                                <i class="fa-solid fa-heart"></i> Thank
+                            </button>
+                        </form>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="empty-state">No volunteer requests yet.</div>
+                {% endif %}
+            </div>
+        </article>
+
+        <article class="care-panel care-wide">
+            <div class="care-panel-head">
+                <h2>Tree Chat</h2>
+                <i class="fa-solid fa-comments"></i>
+            </div>
+            <div class="tree-chat">
+                {% if messages %}
+                    {% for item in messages %}
+                    <div class="chat-message chat-{{ item.sender_type }}">
+                        <strong>{{ item.sender_name }} <span>{{ item.sender_type }}</span></strong>
+                        <p>{{ item.message }}</p>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="empty-state">Messages will appear here.</div>
+                {% endif %}
+            </div>
+            <form class="chat-form" method="POST" action="{{ url_for('add_tree_message', record_number=participant.record_number) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <select name="sender_type" aria-label="Sender type">
+                    <option value="volunteer">Volunteer</option>
+                    <option value="planter">Planter</option>
+                </select>
+                <input name="sender_name" type="text" placeholder="Your name" required>
+                <select name="volunteer_id" aria-label="Related volunteer">
+                    <option value="">General</option>
+                    {% for volunteer in volunteers %}
+                    <option value="{{ volunteer.id }}">{{ volunteer.volunteer_name }}</option>
+                    {% endfor %}
+                </select>
+                <input name="message" type="text" placeholder="Write a message" required>
+                <button class="btn btn-primary" type="submit"><i class="fa-solid fa-paper-plane"></i> Send</button>
+            </form>
+        </article>
+    </section>
+</main>
+{% endblock %}

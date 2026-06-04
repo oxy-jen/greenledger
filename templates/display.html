@@ -48,7 +48,7 @@
                 <article class="tv-card mini-participants">
                     <h2>Live Participants</h2>
                     <strong id="participantCounter">0</strong>
-                    <span>participant submissions</span>
+                    <span>live planters</span>
                 </article>
             </aside>
 
@@ -61,7 +61,7 @@
                     </div>
                     <div class="map-location-chip">
                         <i class="fa-solid fa-map-pin"></i>
-                        <span>Mathenge TTI, Othaya</span>
+                        <span>Kenya-wide planting records</span>
                     </div>
                     <div class="map-display-controls" aria-label="Map controls">
                         <button id="streetLayerBtn" class="active" type="button" title="Street map" aria-pressed="true">
@@ -99,6 +99,14 @@
             </section>
 
             <aside class="tv-right" aria-label="Activity and competition">
+                <article class="tv-card official-card" id="officialSpotlight" hidden>
+                    <div class="tv-card-head">
+                        <h2><i class="fa-solid fa-star"></i> Official Spotlight</h2>
+                        <span>Pinned</span>
+                    </div>
+                    <div id="officialSpotlightBody" class="official-spotlight-body"></div>
+                </article>
+
                 <article class="tv-card feed-card">
                     <div class="tv-card-head">
                         <h2><i class="fa-solid fa-signal"></i> Live Activity Feed</h2>
@@ -129,5 +137,5 @@
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
 <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
-<script src="{{ url_for('static', filename='js/display.js') }}"></script>
+<script src="{{ url_for('static', filename='js/display.js') }}?v={{ asset_version }}"></script>
 {% endblock %}

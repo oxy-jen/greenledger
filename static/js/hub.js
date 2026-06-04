@@ -15,6 +15,8 @@ let hubState = {
     selectedParticipant: null
 };
 
+const PHOTO_PLACEHOLDER = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22240%22 height=%22160%22 viewBox=%220 0 240 160%22%3E%3Crect width=%22240%22 height=%22160%22 fill=%22%23eef5ee%22/%3E%3Ccircle cx=%22120%22 cy=%2272%22 r=%2228%22 fill=%22%2384c98d%22/%3E%3Cpath d=%22M120 76v40%22 stroke=%22%231f6b45%22 stroke-width=%228%22 stroke-linecap=%22round%22/%3E%3C/svg%3E';
+
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', function() {
     initializeHub();
@@ -71,6 +73,11 @@ function setupEventListeners() {
     if (backupBtn) {
         backupBtn.addEventListener('click', createBackup);
     }
+
+    const deleteAllBtn = document.getElementById('deleteAllRecords');
+    if (deleteAllBtn) {
+        deleteAllBtn.addEventListener('click', deleteAllParticipants);
+    }
 }
 
 function fetchHubStats() {
@@ -120,13 +127,36 @@ function fetchParticipants() {
 }
 
 function participantPhotoUrl(participant) {
-    const path = participant?.photo_url || participant?.photo_path;
-    if (!path) return 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22240%22 height=%22160%22 viewBox=%220 0 240 160%22%3E%3Crect width=%22240%22 height=%22160%22 fill=%22%23eef5ee%22/%3E%3Ccircle cx=%22120%22 cy=%2272%22 r=%2228%22 fill=%22%2384c98d%22/%3E%3Cpath d=%22M120 76v40%22 stroke=%22%231f6b45%22 stroke-width=%228%22 stroke-linecap=%22round%22/%3E%3C/svg%3E';
+    const gallery = participantPhotoUrls(participant);
+    const path = gallery[0] || participant?.photo_url || participant?.photo_path;
+    if (!path) return PHOTO_PLACEHOLDER;
     const value = String(path);
     if (/^(data:|blob:|https?:\/\/|\/)/i.test(value)) return value;
 
     const normalized = value.replace(/\\/g, '/').replace(/^static\//, '');
-    return `/static/${normalized.split('/').map(encodeURIComponent).join('/')}`;
+    return `/static/${normalized.split('/').map(encodeURIComponent).join('/')}?v=${encodeURIComponent(participant?.timestamp || Date.now())}`;
+}
+
+function participantPhotoUrls(participant) {
+    const paths = Array.isArray(participant?.photo_urls) && participant.photo_urls.length
+        ? participant.photo_urls
+        : (Array.isArray(participant?.photos) ? participant.photos : []);
+    return paths.map(path => {
+        const value = String(path);
+        if (/^(data:|blob:|https?:\/\/|\/)/i.test(value)) return value;
+        const normalized = value.replace(/\\/g, '/').replace(/^static\//, '');
+        return `/static/${normalized.split('/').map(encodeURIComponent).join('/')}?v=${encodeURIComponent(participant?.timestamp || Date.now())}`;
+    });
+}
+
+function rejectionLabel(participant) {
+    if (participant.status !== 'Rejected') return '';
+    const labels = {
+        photo: 'Photo rejected',
+        details: 'Data rejected',
+        all: 'Photo + data rejected'
+    };
+    return labels[participant.rejection_scope] || 'Rejected';
 }
 
 function renderParticipants(participants) {
@@ -155,7 +185,7 @@ function renderParticipants(participants) {
             <div class="participant-item ${isVIP ? 'vip' : ''}" data-id="${p.id}">
                 <div class="participant-info">
                     <img src="${photoUrl}" alt="${escapeHtml(p.full_name)}" class="participant-photo"
-                         onerror="this.src='/static/images/placeholder.jpg'">
+                         loading="lazy" decoding="async" onerror="this.onerror=null;this.src='${PHOTO_PLACEHOLDER}'">
                     <div class="participant-details">
                         <div class="participant-name">
                             ${escapeHtml(p.full_name)}
@@ -166,28 +196,38 @@ function renderParticipants(participants) {
                             <span>|</span>
                             <span>${formatNumber(p.quantity)} x ${escapeHtml(p.tree_species)}</span>
                             <span>|</span>
-                            <span>${escapeHtml(p.planting_zone)}</span>
+                            <span>${formatNumber(p.student_count || 1)} planters</span>
+                            <span>|</span>
+                            <span>${escapeHtml(p.manual_location_name || p.planting_zone)}</span>
                         </div>
                         <div class="participant-time">${formatDate(p.timestamp)}</div>
                     </div>
                 </div>
                 <div class="participant-actions">
-                    <span class="status-badge ${statusClass}">${escapeHtml(p.status)}</span>
-                    ${p.status === 'Pending' ? `
+                    <span class="status-badge ${statusClass}">${escapeHtml(rejectionLabel(p) || p.status)}</span>
+                    <button onclick="viewParticipant('${p.id}')" class="btn btn-sm btn-primary">
+                        <i class="fa-solid fa-eye"></i> Details
+                    </button>
+                    ${p.status !== 'Verified' ? `
                         <button onclick="verifyParticipant('${p.id}', 'Verified')" class="btn btn-sm btn-success">
                             <i class="fa-solid fa-check"></i> Approve
                         </button>
-                        <button onclick="openRejectModal('${p.id}')" class="btn btn-sm btn-danger">
-                            <i class="fa-solid fa-xmark"></i> Reject
-                        </button>
-                        <button onclick="pinParticipant('${p.id}')" class="btn btn-sm btn-warning">
-                            <i class="fa-solid fa-thumbtack"></i> Pin
-                        </button>
-                    ` : `
-                        <button onclick="viewParticipant('${p.id}')" class="btn btn-sm btn-primary">
-                            View
-                        </button>
-                    `}
+                    ` : ''}
+                    <button onclick="verifyParticipant('${p.id}', 'Rejected', 'photo', 'Photo rejected by admin')" class="btn btn-sm btn-warning">
+                        <i class="fa-solid fa-image"></i> Reject Photo
+                    </button>
+                    <button onclick="verifyParticipant('${p.id}', 'Rejected', 'details', 'Tree data rejected by admin')" class="btn btn-sm btn-danger">
+                        <i class="fa-solid fa-list-check"></i> Reject Data
+                    </button>
+                    <button onclick="verifyParticipant('${p.id}', 'Rejected', 'all', 'Photo and tree data rejected by admin')" class="btn btn-sm btn-danger">
+                        <i class="fa-solid fa-ban"></i> Reject Both
+                    </button>
+                    <button onclick="${isVIP ? `unpinParticipant('${p.id}')` : `pinParticipant('${p.id}')`}" class="btn btn-sm btn-warning">
+                        <i class="fa-solid fa-thumbtack"></i> ${isVIP ? 'Unpin' : 'Pin'}
+                    </button>
+                    <button onclick="deleteParticipant('${p.id}')" class="btn btn-sm btn-danger">
+                        <i class="fa-solid fa-trash"></i> Delete
+                    </button>
                 </div>
             </div>
         `;
@@ -218,8 +258,20 @@ function filterParticipants() {
     renderParticipants(filtered);
 }
 
-function verifyParticipant(id, status, rejectionScope = null, rejectionNote = '') {
-    if (status !== 'Rejected' && !confirm(`Are you sure you want to ${status.toLowerCase()} this participant?`)) {
+async function verifyParticipant(id, status, rejectionScope = null, rejectionNote = '') {
+    const actionLabel = status === 'Rejected'
+        ? (rejectionScope === 'photo' ? 'reject this photo'
+            : rejectionScope === 'details' ? 'reject this tree data'
+            : 'reject this photo and tree data')
+        : (status === 'Verified' ? 'approve this participant' : `${status.toLowerCase()} this participant`);
+
+    const confirmed = await showConfirmDialog({
+        title: status === 'Rejected' ? 'Reject Record' : 'Update Record',
+        message: `Are you sure you want to ${actionLabel}?`,
+        confirmText: status === 'Rejected' ? 'Reject' : 'Approve',
+        danger: status === 'Rejected'
+    });
+    if (!confirmed) {
         return;
     }
     
@@ -272,15 +324,15 @@ function openRejectModal(id) {
                     <p>${escapeHtml(participant.quantity)} x ${escapeHtml(participant.tree_species)} | ${escapeHtml(participant.planting_zone)}</p>
                     <label class="reject-option">
                         <input type="radio" name="rejectScope" value="photo" checked>
-                        <span><strong>Reject photo only</strong> Photo is unclear, fake, repeated, or not the planted tree.</span>
+                        <span><strong>Reject photo only</strong> Hide the image but keep the tree data live.</span>
                     </label>
                     <label class="reject-option">
                         <input type="radio" name="rejectScope" value="details">
-                        <span><strong>Reject details only</strong> Tree name, quantity, department, or zone is wrong.</span>
+                        <span><strong>Reject data only</strong> Trees planted, species, quantity, department, or location is not real.</span>
                     </label>
                     <label class="reject-option">
                         <input type="radio" name="rejectScope" value="all">
-                        <span><strong>Reject all</strong> The whole planting record should be removed from the live display.</span>
+                        <span><strong>Reject photo + data</strong> Hide the whole record from the public display.</span>
                     </label>
                     <textarea id="rejectNote" class="reject-note" rows="3" placeholder="Optional admin note"></textarea>
                     <div class="actions-row">
@@ -330,6 +382,112 @@ function pinParticipant(id) {
     });
 }
 
+function unpinParticipant(id) {
+    fetch(`/api/unpin/${id}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            ...csrfHeader()
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast('Official spotlight removed', 'success');
+            fetchParticipants();
+        } else {
+            showToast('Failed to unpin participant', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showToast('Failed to unpin participant', 'error');
+    });
+}
+
+async function deleteParticipant(id) {
+    const participant = hubState.participants.find(p => p.id === id);
+    const name = participant ? participant.full_name : 'this participant';
+    const confirmed = await showConfirmDialog({
+        title: 'Delete Participant',
+        message: `Delete ${name} permanently? This removes the record and uploaded photos.`,
+        confirmText: 'Delete',
+        danger: true
+    });
+    if (!confirmed) {
+        return;
+    }
+
+    fetch(`/api/participants/${id}`, {
+        method: 'DELETE',
+        headers: csrfHeader()
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast('Participant deleted', 'success');
+            fetchParticipants();
+            fetchHubStats();
+        } else {
+            showToast(data.error || 'Failed to delete participant', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showToast('Failed to delete participant', 'error');
+    });
+}
+
+async function deleteAllParticipants() {
+    const typed = await showConfirmDialog({
+        title: 'Delete All Records',
+        message: 'This will permanently delete every participant record and uploaded photo.',
+        inputLabel: 'Type DELETE ALL RECORDS to continue',
+        requiredText: 'DELETE ALL RECORDS',
+        confirmText: 'Delete All',
+        danger: true
+    });
+    if (typed !== 'DELETE ALL RECORDS') {
+        showToast('Delete all cancelled', 'warning');
+        return;
+    }
+
+    const finalConfirmed = await showConfirmDialog({
+        title: 'Final Confirmation',
+        message: 'Clear all planting records from the database now?',
+        confirmText: 'Clear Database',
+        danger: true
+    });
+    if (!finalConfirmed) {
+        return;
+    }
+
+    fetch('/api/participants', {
+        method: 'DELETE',
+        headers: {
+            'Content-Type': 'application/json',
+            ...csrfHeader()
+        },
+        body: JSON.stringify({ confirm: typed })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast('All participant records deleted', 'success');
+            hubState.participants = [];
+            hubState.filteredParticipants = [];
+            renderParticipants([]);
+            fetchHubStats();
+        } else {
+            showToast(data.error || 'Failed to delete all records', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showToast('Failed to delete all records', 'error');
+    });
+}
+
 function viewParticipant(id) {
     // Show detailed view modal
     const participant = hubState.participants.find(p => p.id === id);
@@ -342,6 +500,7 @@ function viewParticipant(id) {
 function showParticipantModal(participant) {
     // Create and show modal with participant details
     const modal = document.createElement('div');
+    const gallery = participantPhotoUrls(participant);
     modal.className = 'modal-overlay';
     modal.innerHTML = `
         <div class="modal-content">
@@ -352,13 +511,20 @@ function showParticipantModal(participant) {
                 </button>
             </div>
             <div class="modal-body">
-                <img src="${participantPhotoUrl(participant)}" alt="${escapeHtml(participant.full_name)}" class="modal-photo">
+                <div class="modal-gallery">
+                    ${(gallery.length ? gallery : [participantPhotoUrl(participant)]).map(url => `
+                        <img src="${url}" alt="${escapeHtml(participant.full_name)}" class="modal-photo" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='${PHOTO_PLACEHOLDER}'">
+                    `).join('')}
+                </div>
                 <div class="modal-details">
                     <p><strong>Record:</strong> ${escapeHtml(participant.record_number)}</p>
                     <p><strong>Role:</strong> ${escapeHtml(participant.role)}</p>
                     <p><strong>Species:</strong> ${escapeHtml(participant.tree_species)}</p>
                     <p><strong>Quantity:</strong> ${formatNumber(participant.quantity)}</p>
+                    <p><strong>Students / Planters:</strong> ${formatNumber(participant.student_count || 1)}</p>
                     <p><strong>Zone:</strong> ${escapeHtml(participant.planting_zone)}</p>
+                    ${participant.manual_location_name ? `<p><strong>Selected Place:</strong> ${escapeHtml(participant.manual_location_name)}</p>` : ''}
+                    ${participant.latitude && participant.longitude ? `<p><strong>Coordinates:</strong> ${Number(participant.latitude).toFixed(5)}, ${Number(participant.longitude).toFixed(5)}</p>` : ''}
                     <p><strong>CO2 Saved:</strong> ${formatNumber(Math.round(participant.co2_saved_kg || 0))} kg</p>
                     <p><strong>Status:</strong> ${escapeHtml(participant.status)}</p>
                     ${participant.rejection_scope ? `<p><strong>Rejected Part:</strong> ${escapeHtml(participant.rejection_scope)}</p>` : ''}
@@ -451,8 +617,13 @@ function exportData(format) {
     window.location.href = `/export?format=${format}`;
 }
 
-function createBackup() {
-    if (!confirm('This will create a complete backup of all data and photos. Continue?')) {
+async function createBackup() {
+    const confirmed = await showConfirmDialog({
+        title: 'Create Backup',
+        message: 'This will create a complete backup of all data and photos.',
+        confirmText: 'Create Backup'
+    });
+    if (!confirmed) {
         return;
     }
     
@@ -513,6 +684,8 @@ function startRealtimeUpdates() {
 window.verifyParticipant = verifyParticipant;
 window.openRejectModal = openRejectModal;
 window.pinParticipant = pinParticipant;
+window.unpinParticipant = unpinParticipant;
+window.deleteParticipant = deleteParticipant;
 window.viewParticipant = viewParticipant;
 window.exportData = exportData;
 window.createBackup = createBackup;

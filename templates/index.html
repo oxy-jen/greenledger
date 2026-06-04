@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 
-{% block title %}RootLedger - Environmental Event Registration{% endblock %}
+{% block title %}Plant a Tree - RootLedger{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+{% endblock %}
 
 {% block content %}
 <main class="app-shell">
@@ -13,17 +17,17 @@
                         <span class="brand-mark"><i class="fa-solid fa-seedling"></i></span>
                         <span>RootLedger</span>
                     </div>
-                    <p>Environmental Event Registration</p>
+                    <p>Tree planting record</p>
                 </header>
 
                 <div class="portal-card">
-                    <h1>Tree Planting Form</h1>
+                    <h1>Plant a Tree</h1>
 
                     {% if error %}
                     <div class="flash-message">{{ error }}</div>
                     {% endif %}
 
-                    <form id="plantForm" action="/submit" method="POST" enctype="multipart/form-data" class="portal-form">
+                    <form id="plantForm" action="{{ url_for('submit_planting') }}" method="POST" enctype="multipart/form-data" class="portal-form">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <div class="field">
                             <label for="full_name">Full Name</label>
@@ -31,9 +35,9 @@
                         </div>
 
                         <div class="field">
-                            <label for="role">Role / Department</label>
+                            <label for="role">Role</label>
                             <select id="role" name="role" required>
-                                <option value="">Select Role / Department</option>
+                                <option value="">Select role</option>
                                 <option value="ICT Student">ICT Student</option>
                                 <option value="Engineering Student">Engineering Student</option>
                                 <option value="Science Student">Science Student</option>
@@ -55,9 +59,8 @@
                         </div>
 
                         <div class="field">
-                            <label for="tree_species">Tree Species</label>
-                            <select id="tree_species" name="tree_species" required>
-                                <option value="">Tree Species</option>
+                            <label for="tree_species">Species</label>
+                            <select id="tree_species" name="tree_species" multiple required size="5">
                                 <option value="Moringa">Moringa</option>
                                 <option value="Jacaranda">Jacaranda</option>
                                 <option value="Acacia">Acacia</option>
@@ -69,17 +72,33 @@
                                 <option value="Pine">Pine</option>
                                 <option value="Other">Other</option>
                             </select>
+                            <input id="custom_tree_species" type="text" name="custom_tree_species" placeholder="Other species" hidden>
                         </div>
 
                         <div class="field">
-                            <label for="quantity">Quantity of Trees</label>
+                            <label for="quantity">Trees Planted</label>
                             <input id="quantity" type="number" name="quantity" value="1" min="1" max="1000" required>
                         </div>
 
                         <div class="field">
-                            <label for="planting_zone">Planting Zone</label>
-                            <select id="planting_zone" name="planting_zone" required>
-                                <option value="">Select Planting Zone</option>
+                            <label for="student_count">Planters</label>
+                            <input id="student_count" type="number" name="student_count" value="1" min="1" max="500" required>
+                        </div>
+
+                        <div class="field" id="groupLabelField" hidden>
+                            <label for="group_label">Group Name</label>
+                            <input id="group_label" type="text" name="group_label" placeholder="ICT students">
+                        </div>
+
+                        <div class="field">
+                            <label for="planter_names">Names</label>
+                            <textarea id="planter_names" name="planter_names" rows="3" placeholder="Optional: one name per line"></textarea>
+                        </div>
+
+                        <div class="field">
+                            <label for="planting_zone">Place</label>
+                            <select id="planting_zone" name="planting_zone">
+                                <option value="">Select place</option>
                                 <option value="Main Gate">Main Gate</option>
                                 <option value="Administration Block">Administration Block</option>
                                 <option value="ICT Block">ICT Block</option>
@@ -93,10 +112,11 @@
                                 <option value="Staff Quarters">Staff Quarters</option>
                                 <option value="Other">Other</option>
                             </select>
+                            <input id="custom_planting_zone" type="text" name="custom_planting_zone" placeholder="Other place" hidden>
                         </div>
 
                         <div class="field">
-                            <label for="photo">Planting Photo Evidence</label>
+                            <label for="photo">Photo</label>
                             <div class="capture-tabs" role="group" aria-label="Photo source">
                                 <button type="button" class="capture-tab active" id="cameraMode">
                                     <i class="fa-solid fa-camera"></i>
@@ -114,24 +134,37 @@
                                     <div class="camera-actions">
                                         <button type="button" class="btn btn-secondary btn-sm" id="startCamera">
                                             <i class="fa-solid fa-video"></i>
-                                            Open Camera
+                                            Open
                                         </button>
                                         <button type="button" class="btn btn-primary btn-sm" id="capturePhoto" disabled>
                                             <i class="fa-solid fa-camera"></i>
-                                            Take Photo
+                                            Capture
                                         </button>
                                     </div>
                                 </div>
-                                <input id="photo" type="file" name="photo" accept="image/*" capture="environment" required>
+                                <input id="photo" type="file" name="photos" accept="image/*" capture="environment" multiple required>
                                 <div class="photo-preview" id="photoPreview">
                                     <i class="fa-solid fa-camera"></i>
-                                    <span>Camera opens when you choose a photo</span>
+                                    <span>Add planting photo</span>
                                 </div>
+                                <div class="photo-count" id="photoCount">No photos selected</div>
                             </div>
                             <div class="upload-warning" id="uploadWarning" hidden>
                                 <i class="fa-solid fa-triangle-exclamation"></i>
-                                <span>Only upload if the camera fails. Admin will review the image, so send the real planting photo.</span>
+                                <span>Use a real planting photo.</span>
                             </div>
+                        </div>
+
+                        <div class="field">
+                            <label for="locationSearch">Location</label>
+                            <div class="location-search">
+                                <input id="locationSearch" type="search" autocomplete="off" placeholder="Search location">
+                                <button type="button" class="icon-btn" id="clearManualLocation" title="Use automatic GPS">
+                                    <i class="fa-solid fa-location-crosshairs"></i>
+                                </button>
+                            </div>
+                            <div class="location-results" id="locationResults" hidden></div>
+                            <div id="locationMap" class="location-map" aria-label="Selected planting location map"></div>
                         </div>
 
                         <div class="geo-state" id="geoState">
@@ -141,13 +174,17 @@
 
                         <input type="hidden" id="lat" name="lat">
                         <input type="hidden" id="lng" name="lng">
+                        <input type="hidden" id="manual_lat" name="manual_lat">
+                        <input type="hidden" id="manual_lng" name="manual_lng">
+                        <input type="hidden" id="manual_location_name" name="manual_location_name">
+                        <input type="hidden" id="manual_location_provider" name="manual_location_provider">
                         <input type="hidden" id="accuracy" name="accuracy">
                         <input type="hidden" id="browser_data" name="browser_data">
                         <input type="hidden" id="photo_source" name="photo_source" value="camera">
 
                         <button type="submit" class="btn btn-primary">
                             <i class="fa-solid fa-circle-check"></i>
-                            Submit Planting Record
+                            Submit
                         </button>
                     </form>
                 </div>
@@ -155,7 +192,7 @@
                 <div class="portal-card">
                     <div class="impact-strip">
                         <i class="fa-solid fa-cloud"></i>
-                        <span>Estimated Annual CO2 Absorption updates after submission</span>
+                        <span>CO2 estimate appears after submission</span>
                     </div>
                 </div>
             </div>
@@ -167,7 +204,21 @@
                 <span>RootLedger</span>
             </div>
             <h2>Mazingira Day 2026</h2>
-            <p>A fast, real-time registration portal for verified campus tree planting records, live environmental impact, and event operations.</p>
+            <p>Record the planter, tree, place, and photo. The live display updates automatically.</p>
+            <div class="actions-row" style="margin-top: 18px;">
+                <a class="btn btn-secondary" href="/care">
+                    <i class="fa-solid fa-hand-holding-heart"></i>
+                    Care for a Tree
+                </a>
+                <a class="btn btn-secondary" href="/">
+                    <i class="fa-solid fa-house"></i>
+                    Home
+                </a>
+                <a class="btn btn-primary" href="/display" target="_blank">
+                    <i class="fa-solid fa-display"></i>
+                    Live Display
+                </a>
+            </div>
 
             <div class="preview-grid">
                 <div class="preview-tile">
@@ -192,10 +243,12 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 const geoState = document.getElementById('geoState');
 const photoInput = document.getElementById('photo');
 const photoPreview = document.getElementById('photoPreview');
+const photoCount = document.getElementById('photoCount');
 const cameraMode = document.getElementById('cameraMode');
 const uploadMode = document.getElementById('uploadMode');
 const uploadWarning = document.getElementById('uploadWarning');
@@ -206,7 +259,22 @@ const cameraPreview = document.getElementById('cameraPreview');
 const cameraCanvas = document.getElementById('cameraCanvas');
 const startCamera = document.getElementById('startCamera');
 const capturePhoto = document.getElementById('capturePhoto');
+const locationSearch = document.getElementById('locationSearch');
+const locationResults = document.getElementById('locationResults');
+const clearManualLocation = document.getElementById('clearManualLocation');
+const studentCountInput = document.getElementById('student_count');
+const treeSpeciesSelect = document.getElementById('tree_species');
+const customTreeSpeciesInput = document.getElementById('custom_tree_species');
+const plantingZoneSelect = document.getElementById('planting_zone');
+const customPlantingZoneInput = document.getElementById('custom_planting_zone');
+const groupLabelField = document.getElementById('groupLabelField');
+const groupLabelInput = document.getElementById('group_label');
+const planterNamesInput = document.getElementById('planter_names');
 let cameraStream = null;
+let selectedFiles = [];
+let locationMap = null;
+let locationMarker = null;
+let searchTimer = null;
 
 document.getElementById('browser_data').value = JSON.stringify({
     userAgent: navigator.userAgent,
@@ -224,13 +292,15 @@ function setPhotoMode(mode) {
     cameraPanel.hidden = !camera;
     if (camera) {
         photoInput.setAttribute('capture', 'environment');
-        photoPreview.innerHTML = '<i class="fa-solid fa-camera"></i><span>Camera opens when you choose a photo</span>';
+        photoPreview.innerHTML = '<i class="fa-solid fa-camera"></i><span>Add planting photo</span>';
     } else {
         photoInput.removeAttribute('capture');
-        photoPreview.innerHTML = '<i class="fa-solid fa-upload"></i><span>Choose the real planting photo for admin review</span>';
+        photoPreview.innerHTML = '<i class="fa-solid fa-upload"></i><span>Choose photo</span>';
         stopCamera();
     }
-    photoInput.value = '';
+    selectedFiles = [];
+    syncPhotoInput();
+    updatePhotoPreview();
 }
 
 cameraMode.addEventListener('click', () => setPhotoMode('camera'));
@@ -238,7 +308,7 @@ uploadMode.addEventListener('click', () => setPhotoMode('upload'));
 
 startCamera.addEventListener('click', async () => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        photoPreview.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i><span>Camera stream is unavailable. Use the file chooser or Upload fallback.</span>';
+        photoPreview.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i><span>Camera unavailable. Use Upload.</span>';
         return;
     }
 
@@ -250,9 +320,9 @@ startCamera.addEventListener('click', async () => {
         cameraPreview.srcObject = cameraStream;
         cameraPanel.classList.add('active');
         capturePhoto.disabled = false;
-        photoPreview.innerHTML = '<i class="fa-solid fa-camera"></i><span>Camera ready. Take the real planting photo.</span>';
+        photoPreview.innerHTML = '<i class="fa-solid fa-camera"></i><span>Camera ready</span>';
     } catch (error) {
-        photoPreview.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i><span>Camera failed. Switch to Upload and admin will review the real planting photo.</span>';
+        photoPreview.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i><span>Camera failed. Use Upload.</span>';
     }
 });
 
@@ -264,12 +334,14 @@ capturePhoto.addEventListener('click', () => {
     cameraCanvas.toBlob(blob => {
         if (!blob) return;
         const file = new File([blob], `planting-${Date.now()}.jpg`, { type: 'image/jpeg' });
-        const transfer = new DataTransfer();
-        transfer.items.add(file);
-        photoInput.files = transfer.files;
-        photoPreview.innerHTML = `<img src="${URL.createObjectURL(file)}" alt="Captured planting evidence">`;
+        if (selectedFiles.length >= 12) {
+            photoCount.textContent = 'Maximum 12 photos';
+            return;
+        }
+        selectedFiles.push(file);
+        syncPhotoInput();
+        updatePhotoPreview();
         requestPlantingLocation();
-        stopCamera();
     }, 'image/jpeg', 0.9);
 });
 
@@ -284,34 +356,186 @@ function stopCamera() {
 }
 
 photoInput.addEventListener('change', function() {
-    const file = this.files && this.files[0];
-    if (!file) return;
+    selectedFiles = Array.from(this.files || []).slice(0, 12);
+    syncPhotoInput();
+    if (!selectedFiles.length) {
+        updatePhotoPreview();
+        return;
+    }
     requestPlantingLocation();
-    const reader = new FileReader();
-    reader.onload = event => {
-        photoPreview.innerHTML = `<img src="${event.target.result}" alt="Selected planting evidence">`;
-    };
-    reader.readAsDataURL(file);
+    updatePhotoPreview();
 });
+
+function syncPhotoInput() {
+    const transfer = new DataTransfer();
+    selectedFiles.slice(0, 12).forEach(file => transfer.items.add(file));
+    photoInput.files = transfer.files;
+}
+
+function updatePhotoPreview() {
+    if (!selectedFiles.length) {
+        photoPreview.innerHTML = '<i class="fa-solid fa-camera"></i><span>No photos selected</span>';
+        photoCount.textContent = 'No photos selected';
+        return;
+    }
+    const files = selectedFiles.slice(0, 6);
+    photoPreview.innerHTML = `<div class="photo-preview-grid">${files.map(file => `
+        <img src="${URL.createObjectURL(file)}" alt="Planting evidence">
+    `).join('')}</div>`;
+    photoCount.textContent = `${selectedFiles.length} photo${selectedFiles.length === 1 ? '' : 's'} ready`;
+}
+
+function setupLocationMap() {
+    locationMap = L.map('locationMap', {
+        center: [-0.0236, 37.9062],
+        zoom: 6,
+        minZoom: 5,
+        maxZoom: 19,
+        zoomControl: true,
+        attributionControl: false
+    });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        maxNativeZoom: 19
+    }).addTo(locationMap);
+    setTimeout(() => locationMap.invalidateSize(), 120);
+}
+
+function setManualLocation(result) {
+    document.getElementById('manual_lat').value = result.lat;
+    document.getElementById('manual_lng').value = result.lng;
+    document.getElementById('manual_location_name').value = result.name;
+    document.getElementById('manual_location_provider').value = result.provider || 'OpenStreetMap Nominatim';
+    locationSearch.value = result.name;
+    locationResults.hidden = true;
+
+    const latlng = [Number(result.lat), Number(result.lng)];
+    if (!locationMarker) {
+        locationMarker = L.marker(latlng).addTo(locationMap);
+    } else {
+        locationMarker.setLatLng(latlng);
+    }
+    locationMarker.bindPopup(result.name).openPopup();
+    locationMap.flyTo(latlng, 16, { duration: 0.7 });
+    geoState.classList.remove('geo-warning');
+    geoState.innerHTML = '<i class="fa-solid fa-map-pin"></i><span>Location selected</span>';
+}
+
+function clearManualSelection() {
+    document.getElementById('manual_lat').value = '';
+    document.getElementById('manual_lng').value = '';
+    document.getElementById('manual_location_name').value = '';
+    document.getElementById('manual_location_provider').value = '';
+    locationSearch.value = '';
+    locationResults.hidden = true;
+    if (locationMarker) {
+        locationMarker.remove();
+        locationMarker = null;
+    }
+    requestPlantingLocation();
+}
+
+function searchLocations(query) {
+    if (query.trim().length < 2) {
+        locationResults.hidden = true;
+        return;
+    }
+    locationResults.hidden = false;
+    locationResults.innerHTML = '<button type="button" disabled>Searching Kenya locations...</button>';
+    fetch(`/api/geocode?q=${encodeURIComponent(query)}`)
+        .then(response => response.json())
+        .then(results => {
+            if (!results.length) {
+                locationResults.innerHTML = '<button type="button" disabled>No matching Kenya locations found</button>';
+                return;
+            }
+            locationResults.innerHTML = results.map((result, index) => `
+                <button type="button" data-index="${index}">
+                    <strong>${escapeHtml(result.name.split(',')[0])}</strong>
+                    <span>${escapeHtml(result.name)}</span>
+                </button>
+            `).join('');
+            locationResults.querySelectorAll('button').forEach(button => {
+                button.addEventListener('click', () => setManualLocation(results[Number(button.dataset.index)]));
+            });
+        })
+        .catch(() => {
+            locationResults.innerHTML = '<button type="button" disabled>Location search is temporarily unavailable</button>';
+        });
+}
+
+locationSearch.addEventListener('input', event => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => searchLocations(event.target.value), 220);
+});
+clearManualLocation.addEventListener('click', clearManualSelection);
+
+function selectedOptions(select) {
+    return Array.from(select.selectedOptions).map(option => option.value);
+}
+
+function updateCustomInputs() {
+    const usesCustomSpecies = selectedOptions(treeSpeciesSelect).includes('Other');
+    customTreeSpeciesInput.hidden = !usesCustomSpecies;
+    customTreeSpeciesInput.required = usesCustomSpecies;
+    if (!usesCustomSpecies) customTreeSpeciesInput.value = '';
+
+    const usesCustomZone = plantingZoneSelect.value === 'Other';
+    customPlantingZoneInput.hidden = !usesCustomZone;
+    customPlantingZoneInput.required = usesCustomZone;
+    if (!usesCustomZone) customPlantingZoneInput.value = '';
+}
+
+treeSpeciesSelect.addEventListener('change', updateCustomInputs);
+plantingZoneSelect.addEventListener('change', updateCustomInputs);
+updateCustomInputs();
+
+function updatePlanterFields() {
+    const count = Math.max(Number(studentCountInput.value || 1), 1);
+    const hasNames = splitPlanterNames(planterNamesInput.value).length > 0;
+    groupLabelField.hidden = count <= 1;
+    groupLabelInput.required = count > 1 && !hasNames;
+    groupLabelInput.placeholder = `${count} planters`;
+}
+
+function splitPlanterNames(value) {
+    return String(value || '')
+        .split(/[\n,;]+/)
+        .map(name => name.trim())
+        .filter(Boolean);
+}
+
+studentCountInput.addEventListener('input', updatePlanterFields);
+planterNamesInput.addEventListener('input', updatePlanterFields);
+updatePlanterFields();
 
 function requestPlantingLocation() {
     if (!navigator.geolocation) {
-        geoState.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i><span>Location is required but this browser does not support it.</span>';
+        geoState.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i><span>Choose location manually.</span>';
         geoState.classList.add('geo-warning');
         return;
     }
 
     geoState.classList.remove('geo-warning');
-    geoState.innerHTML = '<i class="fa-solid fa-location-crosshairs"></i><span>Capturing real planting location at Mathenge TTI</span>';
+    geoState.innerHTML = '<i class="fa-solid fa-location-crosshairs"></i><span>Capturing location</span>';
     navigator.geolocation.getCurrentPosition(
         function(position) {
             document.getElementById('lat').value = position.coords.latitude;
             document.getElementById('lng').value = position.coords.longitude;
             document.getElementById('accuracy').value = position.coords.accuracy || '';
-            geoState.innerHTML = `<i class="fa-solid fa-circle-check"></i><span>Location captured within ${Math.round(position.coords.accuracy || 0)}m</span>`;
+            if (!document.getElementById('manual_lat').value && locationMap) {
+                const latlng = [position.coords.latitude, position.coords.longitude];
+                if (!locationMarker) {
+                    locationMarker = L.marker(latlng).addTo(locationMap);
+                } else {
+                    locationMarker.setLatLng(latlng);
+                }
+                locationMap.setView(latlng, 16);
+            }
+            geoState.innerHTML = `<i class="fa-solid fa-circle-check"></i><span>Location captured (${Math.round(position.coords.accuracy || 0)}m)</span>`;
         },
         function() {
-            geoState.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i><span>Location is required. Allow location access before submitting.</span>';
+            geoState.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i><span>Allow location or search place.</span>';
             geoState.classList.add('geo-warning');
         },
         { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
@@ -321,17 +545,52 @@ function requestPlantingLocation() {
 requestPlantingLocation();
 
 plantForm.addEventListener('submit', function(event) {
-    if (!document.getElementById('lat').value || !document.getElementById('lng').value) {
+    updatePlanterFields();
+    updateCustomInputs();
+    const chosenSpecies = selectedOptions(treeSpeciesSelect).filter(value => value && value !== 'Other');
+    if (!chosenSpecies.length && !customTreeSpeciesInput.value.trim()) {
         event.preventDefault();
-        geoState.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i><span>Please allow location access so the planted tree is mapped correctly.</span>';
+        treeSpeciesSelect.focus();
+        treeSpeciesSelect.setCustomValidity('Select species.');
+        treeSpeciesSelect.reportValidity();
+        return;
+    }
+    treeSpeciesSelect.setCustomValidity('');
+
+    const studentCount = Math.max(Number(studentCountInput.value || 1), 1);
+    const planterNames = splitPlanterNames(planterNamesInput.value);
+    if (studentCount > 1 && !planterNames.length && !groupLabelInput.value.trim()) {
+        event.preventDefault();
+        groupLabelField.hidden = false;
+        groupLabelInput.focus();
+        groupLabelInput.setCustomValidity('Add group name.');
+        groupLabelInput.reportValidity();
+        return;
+    }
+    groupLabelInput.setCustomValidity('');
+
+    const hasGpsLocation = document.getElementById('lat').value && document.getElementById('lng').value;
+    const hasManualLocation = document.getElementById('manual_lat').value && document.getElementById('manual_lng').value;
+    if (!hasGpsLocation && !hasManualLocation) {
+        event.preventDefault();
+        geoState.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i><span>Add location.</span>';
         geoState.classList.add('geo-warning');
         return;
     }
     if (!photoInput.files || !photoInput.files.length) {
         event.preventDefault();
-        photoPreview.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i><span>Please take or choose the real planting photo before submitting.</span>';
+        photoPreview.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i><span>Add one photo.</span>';
     }
 });
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+}
 
 function updateStats() {
     fetch('/api/stats')
@@ -345,6 +604,7 @@ function updateStats() {
 }
 
 updateStats();
+setupLocationMap();
 setInterval(updateStats, 5000);
 </script>
 {% endblock %}

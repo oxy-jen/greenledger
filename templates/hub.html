@@ -12,7 +12,9 @@
         <nav class="hub-nav" aria-label="Operations navigation">
             <a class="active" href="#dashboard"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
             <a href="#records"><i class="fa-solid fa-list-check"></i> Verification</a>
+            <a href="#care"><i class="fa-solid fa-hand-holding-heart"></i> Tree Care</a>
             <a href="#reports"><i class="fa-solid fa-chart-simple"></i> Reports</a>
+            <a href="/care" target="_blank"><i class="fa-solid fa-tree"></i> Care Page</a>
             <a href="/display" target="_blank"><i class="fa-solid fa-display"></i> Live Display</a>
             <a href="/admin/logout"><i class="fa-solid fa-arrow-right-from-bracket"></i> Logout</a>
         </nav>
@@ -27,6 +29,7 @@
             <div class="actions-row" style="width: auto;">
                 <a class="btn btn-secondary" href="/export?format=zip"><i class="fa-solid fa-box-archive"></i> Export Package</a>
                 <button id="createBackup" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Backup</button>
+                <button id="deleteAllRecords" class="btn btn-danger"><i class="fa-solid fa-trash-can"></i> Delete All</button>
             </div>
         </header>
 
@@ -69,17 +72,115 @@
                                 <img class="participant-photo" src="{{ url_for('static', filename=participant.photo_path) }}" alt="{{ participant.full_name }}">
                                 <div>
                                     <div class="participant-name">{{ participant.full_name }}</div>
-                                    <div class="participant-meta">{{ participant.role }} | {{ participant.quantity }} x {{ participant.tree_species }} | {{ participant.planting_zone }}</div>
+                                    <div class="participant-meta">{{ participant.role }} | {{ participant.quantity }} x {{ participant.tree_species }} | {{ participant.student_count|default(1, true) }} planters | {{ participant.manual_location_name or participant.planting_zone }}</div>
                                     <div class="participant-time">{{ participant.record_number }}</div>
                                 </div>
                             </div>
                             <div class="participant-actions">
                                 <span class="status-badge status-{{ participant.status.lower() }}">{{ participant.status }}</span>
+                                <button type="button" onclick="viewParticipant('{{ participant.id }}')" class="btn btn-sm btn-primary">
+                                    <i class="fa-solid fa-eye"></i> Details
+                                </button>
+                                {% if participant.status != 'Verified' %}
+                                <button type="button" onclick="verifyParticipant('{{ participant.id }}', 'Verified')" class="btn btn-sm btn-success">
+                                    <i class="fa-solid fa-check"></i> Approve
+                                </button>
+                                {% endif %}
+                                <button type="button" onclick="verifyParticipant('{{ participant.id }}', 'Rejected', 'photo', 'Photo rejected by admin')" class="btn btn-sm btn-warning">
+                                    <i class="fa-solid fa-image"></i> Reject Photo
+                                </button>
+                                <button type="button" onclick="verifyParticipant('{{ participant.id }}', 'Rejected', 'details', 'Tree data rejected by admin')" class="btn btn-sm btn-danger">
+                                    <i class="fa-solid fa-list-check"></i> Reject Data
+                                </button>
+                                <button type="button" onclick="verifyParticipant('{{ participant.id }}', 'Rejected', 'all', 'Photo and tree data rejected by admin')" class="btn btn-sm btn-danger">
+                                    <i class="fa-solid fa-ban"></i> Reject Both
+                                </button>
+                                {% if participant.is_vip %}
+                                <button type="button" onclick="unpinParticipant('{{ participant.id }}')" class="btn btn-sm btn-warning">
+                                    <i class="fa-solid fa-thumbtack"></i> Unpin
+                                </button>
+                                {% else %}
+                                <button type="button" onclick="pinParticipant('{{ participant.id }}')" class="btn btn-sm btn-warning">
+                                    <i class="fa-solid fa-thumbtack"></i> Pin
+                                </button>
+                                {% endif %}
+                                <button type="button" onclick="deleteParticipant('{{ participant.id }}')" class="btn btn-sm btn-danger">
+                                    <i class="fa-solid fa-trash"></i> Delete
+                                </button>
                             </div>
                         </div>
                         {% endfor %}
                     {% else %}
                         <div class="empty-state">No participant records yet.</div>
+                    {% endif %}
+                </div>
+            </article>
+
+            <article class="hub-card care-admin-card" id="care">
+                <div class="hub-card-head">
+                    <h2>Tree Care Volunteers</h2>
+                    <i class="fa-solid fa-hand-holding-heart"></i>
+                </div>
+                <div class="care-admin-list">
+                    {% if care_volunteers %}
+                        {% for volunteer in care_volunteers %}
+                        <div class="care-admin-row">
+                            <div>
+                                <strong>{{ volunteer.volunteer_name }}</strong>
+                                <span>{{ volunteer.status }} · {{ volunteer.record_number }} · {{ volunteer.tree_species }}</span>
+                                <small>{{ volunteer.manual_location_name or volunteer.planting_zone }}</small>
+                                {% if volunteer.message %}<p>{{ volunteer.message }}</p>{% endif %}
+                            </div>
+                            <a class="btn btn-secondary btn-sm" href="{{ url_for('care_tree_detail', record_number=volunteer.record_number) }}" target="_blank">
+                                <i class="fa-solid fa-comments"></i> Open
+                            </a>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="empty-state">No volunteer caretakers yet.</div>
+                    {% endif %}
+                </div>
+
+                <div class="hub-card-head" style="margin-top: 18px;">
+                    <h2>Care Notifications</h2>
+                    <i class="fa-solid fa-bell"></i>
+                </div>
+                <div class="care-admin-list compact">
+                    {% if care_notifications %}
+                        {% for note in care_notifications %}
+                        <div class="care-admin-row">
+                            <div>
+                                <strong>{{ note.type|replace('_', ' ')|title }}</strong>
+                                <span>{{ note.record_number }} · {{ note.tree_species }}</span>
+                                <p>{{ note.message }}</p>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="empty-state">No care notifications yet.</div>
+                    {% endif %}
+                </div>
+
+                <div class="hub-card-head" style="margin-top: 18px;">
+                    <h2>Recent Tree Chat</h2>
+                    <i class="fa-solid fa-comments"></i>
+                </div>
+                <div class="care-admin-list compact">
+                    {% if care_messages %}
+                        {% for message in care_messages %}
+                        <div class="care-admin-row">
+                            <div>
+                                <strong>{{ message.sender_name }} <span>{{ message.sender_type }}</span></strong>
+                                <span>{{ message.record_number }} · {{ message.tree_species }}</span>
+                                <p>{{ message.message }}</p>
+                            </div>
+                            <a class="btn btn-secondary btn-sm" href="{{ url_for('care_tree_detail', record_number=message.record_number) }}" target="_blank">
+                                <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                            </a>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="empty-state">No chat messages yet.</div>
                     {% endif %}
                 </div>
             </article>
@@ -121,5 +222,5 @@
 
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="{{ url_for('static', filename='js/hub.js') }}"></script>
+<script src="{{ url_for('static', filename='js/hub.js') }}?v={{ asset_version }}"></script>
 {% endblock %}

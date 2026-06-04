@@ -34,9 +34,25 @@
                     <strong>{{ participant.quantity }}</strong>
                 </div>
                 <div class="record-row">
+                    <span>Students / Planters</span>
+                    <strong>{{ participant.student_count|default(1, true) }}</strong>
+                </div>
+                {% if participant.planter_display %}
+                <div class="record-row">
+                    <span>Planter Names / Group</span>
+                    <strong>{{ participant.planter_display }}</strong>
+                </div>
+                {% endif %}
+                <div class="record-row">
                     <span>Planting Zone</span>
                     <strong>{{ participant.planting_zone }}</strong>
                 </div>
+                {% if participant.manual_location_name %}
+                <div class="record-row">
+                    <span>Selected Place</span>
+                    <strong>{{ participant.manual_location_name }}</strong>
+                </div>
+                {% endif %}
                 <div class="record-row">
                     <span>GPS Location</span>
                     <strong>
@@ -61,7 +77,15 @@
                 </div>
             </div>
 
+            {% if participant.photo_urls %}
+            <div class="record-photo-grid">
+                {% for photo_url in participant.photo_urls %}
+                <img class="record-photo" src="{{ photo_url }}" alt="Planting evidence">
+                {% endfor %}
+            </div>
+            {% else %}
             <img class="record-photo" src="{{ url_for('static', filename=participant.photo_path) }}" alt="Planting evidence">
+            {% endif %}
 
             <div class="actions-row no-print">
                 <a class="btn btn-secondary" href="{{ url_for('view_record', record_number=participant.record_number) }}">
@@ -72,7 +96,11 @@
                     <i class="fa-solid fa-print"></i>
                     Print
                 </button>
-                <a class="btn btn-primary" href="/">
+                <a class="btn btn-secondary" href="{{ url_for('care_tree_detail', record_number=participant.record_number) }}">
+                    <i class="fa-solid fa-hand-holding-heart"></i>
+                    Care Thread
+                </a>
+                <a class="btn btn-primary" href="{{ url_for('plant_tree') }}">
                     <i class="fa-solid fa-plus"></i>
                     Register Another
                 </a>
